@@ -279,8 +279,16 @@ else
     warn "nginxflow 启动异常，查看日志: journalctl -u nginxflow -n 30"
 fi
 
-# ─── 清理 ────────────────────────────────────────────────
+# ─── 清理编译产物 ─────────────────────────────────────────
+step "清理编译缓存"
 rm -rf "$TMP_DIR"
+rm -f /tmp/nginxflow-server-new
+# Go 模块缓存（可能达 500MB+）
+rm -rf /root/go/pkg/mod/cache 2>/dev/null || true
+rm -rf /home/*/.cache/go 2>/dev/null || true
+# Node 编译缓存
+rm -rf /root/.npm/_cacache 2>/dev/null || true
+ok "清理完成"
 
 # ─── 完成 ────────────────────────────────────────────────
 IP=$(hostname -I | awk '{print $1}')
