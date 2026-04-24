@@ -274,6 +274,9 @@ func SyncPortDefaults() {
 		if stack == "" {
 			stack = "both"
 		}
+		if port == 0 {
+			continue // 纯 HTTPS 模式，无 HTTP 端口，跳过
+		}
 		named := isNamedSN(sn)
 		ps := ensureHTTP(port, stack)
 		if named {
