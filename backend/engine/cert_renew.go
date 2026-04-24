@@ -15,6 +15,7 @@ import (
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/lego"
+	"github.com/go-acme/lego/v4/providers/dns/dnspod"
 	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
 	"github.com/go-acme/lego/v4/registration"
 
@@ -32,17 +33,21 @@ func (u *legoUser) GetEmail() string                        { return u.Email }
 func (u *legoUser) GetRegistration() *registration.Resource { return u.Registration }
 func (u *legoUser) GetPrivateKey() crypto.PrivateKey        { return u.key }
 
-// getACMEClient 初始化 lego client，使用 DNSPod (腾讯云) DNS-01 验证
+// getACMEClient 初始化 lego client，自动选择 DNS provider：
+//   - 优先使用 DNSPod API（dnspod_id + dnspod_key）
+//   - 其次使用腾讯云 CAM（tencent_secret_id + tencent_secret_key）
 func getACMEClient(domain string) (*lego.Client, *legoUser, error) {
-	var sid, skey, email, accountJSON, accountKeyPEM string
+	var sid, skey, dpID, dpKey, email, accountJSON, accountKeyPEM string
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='tencent_secret_id'`).Scan(&sid)
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='tencent_secret_key'`).Scan(&skey)
+	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='dnspod_id'`).Scan(&dpID)
+	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='dnspod_key'`).Scan(&dpKey)
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='acme_email'`).Scan(&email)
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='acme_account_json'`).Scan(&accountJSON)
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='acme_account_key'`).Scan(&accountKeyPEM)
 
-	if sid == "" || skey == "" {
-		return nil, nil, fmt.Errorf("未配置腾讯云 API 密钥（SecretId / SecretKey），请在系统设置中填写")
+	if dpID == "" && (sid == "" || skey == "") {
+		return nil, nil, fmt.Errorf("未配置 DNS API 密钥，请在系统设置中填写 DNSPod API（ID + Token）或腾讯云 CAM（SecretId + SecretKey）")
 	}
 	if email == "" {
 		return nil, nil, fmt.Errorf("未配置 ACME 邮箱，请在系统设置「腾讯云 SSL 续签」中填写邮箱")
@@ -91,16 +96,32 @@ func getACMEClient(domain string) (*lego.Client, *legoUser, error) {
 		return nil, nil, fmt.Errorf("初始化 ACME 客户端失败: %v", err)
 	}
 
-	// 配置腾讯云 DNSPod DNS-01 provider
-	tcConfig := tencentcloud.NewDefaultConfig()
-	tcConfig.SecretID = sid
-	tcConfig.SecretKey = skey
-	provider, err := tencentcloud.NewDNSProviderConfig(tcConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("初始化腾讯云 DNS 提供者失败: %v", err)
+	// 配置 DNS-01 provider（优先 DNSPod API，其次腾讯云 CAM）
+	var providerErr error
+	if dpID != "" && dpKey != "" {
+		// DNSPod 旧 API（ID + Token Key）
+		dpConfig := dnspod.NewDefaultConfig()
+		dpConfig.LoginToken = dpID + "," + dpKey
+		provider, err := dnspod.NewDNSProviderConfig(dpConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("初始化 DNSPod 提供者失败: %v", err)
+		}
+		providerErr = client.Challenge.SetDNS01Provider(provider)
+		log.Printf("[lego] 使用 DNSPod API 模式（ID: %s）", dpID)
+	} else {
+		// 腾讯云 CAM API（SecretId + SecretKey）
+		tcConfig := tencentcloud.NewDefaultConfig()
+		tcConfig.SecretID = sid
+		tcConfig.SecretKey = skey
+		provider, err := tencentcloud.NewDNSProviderConfig(tcConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("初始化腾讯云 DNS 提供者失败: %v", err)
+		}
+		providerErr = client.Challenge.SetDNS01Provider(provider)
+		log.Printf("[lego] 使用腾讯云 CAM API 模式（SecretId: %s...）", sid[:min(8, len(sid))])
 	}
-	if err := client.Challenge.SetDNS01Provider(provider); err != nil {
-		return nil, nil, fmt.Errorf("设置 DNS-01 失败: %v", err)
+	if providerErr != nil {
+		return nil, nil, fmt.Errorf("设置 DNS-01 失败: %v", providerErr)
 	}
 
 	// 如果未注册，先注册 Let's Encrypt 账号

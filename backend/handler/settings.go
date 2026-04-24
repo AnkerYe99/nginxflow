@@ -18,7 +18,7 @@ func GetSettings(c *gin.Context) {
 		var k, v string
 		rows.Scan(&k, &v)
 		// 敏感字段仅返回是否已配置
-		if k == "tencent_secret_key" || k == "sync_token" || k == "smtp_password" {
+		if k == "tencent_secret_key" || k == "sync_token" || k == "smtp_password" || k == "dnspod_key" || k == "acme_account_key" || k == "acme_account_json" {
 			if v != "" {
 				m[k] = "***"
 			} else {

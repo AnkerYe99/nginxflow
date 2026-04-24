@@ -32,16 +32,27 @@
 
         <el-divider>SSL 自动续签（Let's Encrypt + DNSPod）</el-divider>
         <el-alert type="info" :closable="false" style="margin-bottom:16px;max-width:640px">
-          使用 <b>Let's Encrypt</b> 免费证书，通过腾讯云 DNSPod API 自动完成 DNS-01 验证。<br>
-          要求：域名的 DNS 解析托管在 DNSPod（与 API Key 同账号）。
+          使用 <b>Let's Encrypt</b> 免费证书，通过 DNSPod API 自动完成 DNS-01 验证。<br>
+          支持两种 API：<b>DNSPod Token API</b>（推荐，在 dnspod.cn 控制台生成）或腾讯云 CAM SecretId/Key。填其中一种即可。
         </el-alert>
         <el-form-item label="ACME 邮箱" required>
           <el-input v-model="form.acme_email" placeholder="your@email.com（用于 Let's Encrypt 账号注册）" />
         </el-form-item>
-        <el-form-item label="API SecretId" required>
-          <el-input v-model="form.tencent_secret_id" placeholder="腾讯云 DNSPod API SecretId" />
+
+        <el-divider content-position="left"><span style="font-size:13px;color:#909399">方式一：DNSPod Token API（推荐）</span></el-divider>
+        <el-form-item label="DNSPod ID">
+          <el-input v-model="form.dnspod_id" placeholder="DNSPod 用户中心 → API Token → ID" style="max-width:200px" />
+          <span style="margin-left:8px;color:#999;font-size:12px">在 <a href="https://console.dnspod.cn/account/token/token" target="_blank">dnspod.cn</a> 生成</span>
         </el-form-item>
-        <el-form-item label="API SecretKey">
+        <el-form-item label="DNSPod Token Key">
+          <el-input v-model="form.dnspod_key" type="password" show-password placeholder="未修改保持为空" />
+        </el-form-item>
+
+        <el-divider content-position="left"><span style="font-size:13px;color:#909399">方式二：腾讯云 CAM API</span></el-divider>
+        <el-form-item label="CAM SecretId">
+          <el-input v-model="form.tencent_secret_id" placeholder="腾讯云控制台 → 访问管理 → API 密钥" />
+        </el-form-item>
+        <el-form-item label="CAM SecretKey">
           <el-input v-model="form.tencent_secret_key" type="password" show-password placeholder="未修改保持为空" />
         </el-form-item>
 
