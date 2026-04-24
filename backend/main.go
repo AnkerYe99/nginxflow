@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -45,6 +46,7 @@ func main() {
 	}
 	health.StartAll()
 	log.Println("[health] workers started")
+	go startCertAutoRenew()
 
 	r := gin.Default()
 	r.Use(corsMiddleware())
@@ -90,6 +92,7 @@ func main() {
 		auth.DELETE("/certs/:id", handler.DeleteCert)
 		auth.PUT("/certs/:id/auto_renew", handler.ToggleAutoRenew)
 		auth.POST("/certs/:id/renew", handler.ManualRenew)
+		auth.GET("/certs/:id/renew_log", handler.GetRenewLog)
 
 		auth.GET("/stats/overview", handler.Overview)
 		auth.GET("/stats/health", handler.Health)
@@ -131,6 +134,20 @@ func main() {
 	log.Printf("[nginxflow] listening on %s", addr)
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// startCertAutoRenew 每天凌晨 2 点检查并自动续签到期证书
+func startCertAutoRenew() {
+	for {
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, now.Location())
+		if !next.After(now) {
+			next = next.Add(24 * time.Hour)
+		}
+		time.Sleep(time.Until(next))
+		log.Println("[cert] running auto-renew check")
+		engine.AutoRenewCheck()
 	}
 }
 

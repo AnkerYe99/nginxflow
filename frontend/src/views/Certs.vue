@@ -155,8 +155,31 @@ async function toggleRenew(row, v) {
 }
 
 async function renew(row) {
-  const res = await api.post(`/certs/${row.id}/renew`)
-  ElMessage.info(res.data.msg || '已提交续签')
+  try {
+    const res = await api.post(`/certs/${row.id}/renew`)
+    ElMessage.success(res.data.msg || '已提交续签申请')
+    load()
+    // 轮询续签状态
+    pollRenewStatus(row.id)
+  } catch {}
+}
+
+function pollRenewStatus(id) {
+  const timer = setInterval(async () => {
+    try {
+      const res = await api.get(`/certs/${id}/renew_log`)
+      const { status, log } = res.data
+      if (status === 'success') {
+        ElMessage.success('证书续签成功！')
+        clearInterval(timer)
+        load()
+      } else if (status === 'failed') {
+        ElMessage.error('续签失败：' + log)
+        clearInterval(timer)
+        load()
+      }
+    } catch { clearInterval(timer) }
+  }, 15000) // 每 15 秒轮询一次
 }
 
 onMounted(load)

@@ -13,6 +13,14 @@ import (
 	"nginxflow/util"
 )
 
+// GetRenewLog 获取续签日志（前端轮询用）
+func GetRenewLog(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var status, log string
+	db.DB.QueryRow(`SELECT IFNULL(renew_status,''), IFNULL(renew_log,'') FROM ssl_certs WHERE id=?`, id).Scan(&status, &log)
+	util.OK(c, gin.H{"status": status, "log": log})
+}
+
 func ListCerts(c *gin.Context) {
 	rows, err := db.DB.Query(`SELECT id,domain,expire_at,auto_renew,IFNULL(tencent_cert_id,''),
 		renew_status,IFNULL(renew_log,''),IFNULL(last_renew_at,''),created_at,updated_at
@@ -137,8 +145,15 @@ func ToggleAutoRenew(c *gin.Context) {
 }
 
 func ManualRenew(c *gin.Context) {
-	// 腾讯云续签需要 API 密钥，这里先返回占位响应
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	// TODO: 调用 cert.Renew()
-	util.OK(c, gin.H{"id": id, "status": "scheduled", "msg": "已加入续签队列"})
+	var domain string
+	if err := db.DB.QueryRow(`SELECT domain FROM ssl_certs WHERE id=?`, id).Scan(&domain); err != nil {
+		util.Fail(c, 404, "证书不存在")
+		return
+	}
+	if err := engine.RenewCert(id, domain); err != nil {
+		util.Fail(c, 500, err.Error())
+		return
+	}
+	util.OK(c, gin.H{"msg": "已提交续签申请，正在后台处理，约 5-30 分钟完成"})
 }
