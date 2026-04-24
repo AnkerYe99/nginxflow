@@ -1,10 +1,13 @@
 package main
 
 import (
+	"embed"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +18,9 @@ import (
 	"nginxflow/health"
 	"nginxflow/middleware"
 )
+
+//go:embed all:frontend/dist
+var frontendFS embed.FS
 
 func main() {
 	cfgPath := flag.String("config", "/opt/nginxflow/config.yaml", "config file path")
@@ -30,7 +36,6 @@ func main() {
 		log.Printf("EnsureAdmin: %v", err)
 	}
 
-	// 启动时应用所有规则 + 启动健康检查
 	if err := engine.ApplyAll(); err != nil {
 		log.Printf("[engine] ApplyAll warning: %v", err)
 	}
@@ -40,7 +45,7 @@ func main() {
 	r := gin.Default()
 	r.Use(corsMiddleware())
 
-	// 无需 JWT（SSE 通过 ?token= 自行鉴权）
+	// SSE（无需 JWT，通过 ?token= 鉴权）
 	r.GET("/api/v1/rules/:id/logs/stream", handler.StreamRuleLogs)
 
 	// 无需 JWT
@@ -96,6 +101,27 @@ func main() {
 		auth.POST("/sync/nodes", handler.AddSyncNode)
 		auth.DELETE("/sync/nodes/:id", handler.DeleteSyncNode)
 	}
+
+	// 前端静态文件（SPA 模式，未匹配路由回退 index.html）
+	distFS, _ := fs.Sub(frontendFS, "frontend/dist")
+	r.NoRoute(func(c *gin.Context) {
+		urlPath := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if urlPath == "" {
+			urlPath = "index.html"
+		}
+		f, err := distFS.Open(urlPath)
+		if err != nil {
+			c.FileFromFS("index.html", http.FS(distFS))
+			return
+		}
+		stat, err := f.Stat()
+		f.Close()
+		if err != nil || stat.IsDir() {
+			c.FileFromFS("index.html", http.FS(distFS))
+			return
+		}
+		c.FileFromFS(urlPath, http.FS(distFS))
+	})
 
 	addr := fmt.Sprintf(":%d", config.Global.Server.Port)
 	log.Printf("[nginxflow] listening on %s", addr)
