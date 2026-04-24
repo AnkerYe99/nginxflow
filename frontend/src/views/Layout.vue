@@ -20,7 +20,7 @@
       <el-header class="header">
         <el-icon v-if="isMobile" class="hamburger" :size="22" @click="sideOpen=!sideOpen"><Menu /></el-icon>
         <span v-else></span>
-        <el-dropdown>
+        <el-dropdown @command="handleDropdown">
           <span class="user-info">
             <el-icon><User/></el-icon>
             {{ username }}
@@ -31,7 +31,8 @@
               <el-dropdown-item disabled style="font-size:12px;color:#999">
                 无操作 30 分钟自动退出
               </el-dropdown-item>
-              <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+              <el-dropdown-item command="profile" divided>账号设置</el-dropdown-item>
+              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -42,6 +43,26 @@
       </el-footer>
     </el-container>
   </el-container>
+
+  <!-- 账号设置对话框 -->
+  <el-dialog v-model="profileShow" title="账号设置" width="420px" :close-on-click-modal="false">
+    <el-form :model="profileForm" label-width="90px">
+      <el-form-item label="新用户名">
+        <el-input v-model="profileForm.username" :placeholder="`当前: ${username}`" clearable />
+        <div style="color:#999;font-size:12px;margin-top:4px">留空则不修改</div>
+      </el-form-item>
+      <el-form-item label="当前密码" required>
+        <el-input v-model="profileForm.old_password" type="password" show-password />
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="profileForm.new_password" type="password" show-password placeholder="留空则不修改，至少6位" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="profileShow=false">取消</el-button>
+      <el-button type="primary" :loading="profileSaving" @click="saveProfile">保存</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -49,13 +70,46 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { touchActivity } from '../api'
+import api from '../api'
 
-const IDLE_TIMEOUT = 30 * 60 * 1000 // 30 分钟无操作自动退出
+const IDLE_TIMEOUT = 30 * 60 * 1000
 
 const router = useRouter()
-const username = localStorage.getItem('username') || 'admin'
+const username = ref(localStorage.getItem('username') || 'admin')
 const sideOpen = ref(false)
 const isMobile = ref(false)
+
+const profileShow = ref(false)
+const profileSaving = ref(false)
+const profileForm = ref({ username: '', old_password: '', new_password: '' })
+
+function handleDropdown(cmd) {
+  if (cmd === 'logout') logout()
+  else if (cmd === 'profile') {
+    profileForm.value = { username: '', old_password: '', new_password: '' }
+    profileShow.value = true
+  }
+}
+
+async function saveProfile() {
+  if (!profileForm.value.old_password) return ElMessage.warning('请输入当前密码')
+  profileSaving.value = true
+  try {
+    await api.put('/auth/profile', profileForm.value)
+    ElMessage.success('修改成功，请重新登录')
+    if (profileForm.value.username) {
+      localStorage.setItem('username', profileForm.value.username)
+      username.value = profileForm.value.username
+    }
+    profileShow.value = false
+    setTimeout(() => {
+      localStorage.removeItem('token')
+      localStorage.removeItem('lastActivity')
+      router.push('/login')
+    }, 1200)
+  } catch {}
+  profileSaving.value = false
+}
 
 function checkMobile() { isMobile.value = window.innerWidth < 768 }
 function onActivity() { touchActivity() }

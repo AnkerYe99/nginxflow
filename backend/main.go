@@ -61,6 +61,7 @@ func main() {
 	{
 		auth.GET("/auth/profile", handler.Profile)
 		auth.PUT("/auth/password", handler.ChangePassword)
+		auth.PUT("/auth/profile", handler.ChangeProfile)
 
 		auth.GET("/rules", handler.ListRules)
 		auth.POST("/rules", handler.CreateRule)
