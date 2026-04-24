@@ -59,7 +59,7 @@ step "安装基础工具"
 if [ "$PKG_MGR" = "apt" ]; then
     apt-get update -q
 fi
-pkg_install curl wget git unzip ca-certificates gnupg 2>/dev/null || true
+pkg_install curl wget git unzip ca-certificates gnupg build-essential 2>/dev/null || true
 ok "基础工具就绪"
 
 # ─── 安装 Go ─────────────────────────────────────────────
@@ -164,7 +164,7 @@ info "前端已复制到 backend/frontend/dist，准备 embed"
 step "编译后端（含嵌入前端）"
 cd "$TMP_DIR/backend"
 info "go build..."
-GOFLAGS="-mod=mod" go build -ldflags="-s -w" -o nginxflow-server .
+CGO_ENABLED=1 GOFLAGS="-mod=mod" go build -ldflags="-s -w" -o nginxflow-server .
 ok "后端编译完成（单一可执行文件）"
 
 # ─── 部署文件 ────────────────────────────────────────────
