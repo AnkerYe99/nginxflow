@@ -68,7 +68,29 @@
 
 ---
 
-## 快速部署
+## 一键安装
+
+> 支持 Ubuntu 20.04 / 22.04 / 24.04，缺少的依赖（Go、Node.js、Nginx）会自动安装。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnkerYe99/nginxflow/master/install.sh | sudo bash
+```
+
+或先下载再执行：
+
+```bash
+wget https://raw.githubusercontent.com/AnkerYe99/nginxflow/master/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+安装过程会询问管理后台端口（默认 `9001`）和 API 端口（默认 `9000`），直接回车使用默认值即可。
+
+安装完成后访问 `http://<服务器IP>:9001`，默认账号 `admin` / `admin123`，**首次登录后请修改密码**。
+
+---
+
+## 手动部署
 
 ### 1. 克隆仓库
 
@@ -95,14 +117,11 @@ npm run build
 
 ### 4. 配置文件
 
-在 `backend/` 目录下创建 `config.yaml`：
+创建 `/opt/nginxflow/config.yaml`：
 
 ```yaml
 server:
-  port: 9000          # 后端 API 端口
-
-frontend:
-  dist: ../frontend/dist
+  port: 9000
 
 nginx:
   conf_dir: /etc/nginx/conf.d
@@ -110,15 +129,15 @@ nginx:
   test_cmd: nginx -t
 
 db:
-  path: ./data/nginxflow.db
+  path: /opt/nginxflow/data/nginxflow.db
 
 jwt:
   secret: 请替换为随机字符串
 ```
 
-### 5. Nginx 反向代理前端
+### 5. Nginx 主配置
 
-参考 `deploy/nginx.conf`，将前端静态文件和 API 反代到同一域名下。
+参考 `deploy/nginx.conf`，将前端静态文件目录指向 `/opt/nginxflow/frontend`，API 反代到 `127.0.0.1:9000`。
 
 ### 6. 注册系统服务
 
