@@ -12,6 +12,7 @@
         <el-menu-item index="/rules"><el-icon><Connection/></el-icon><span>转发规则</span></el-menu-item>
         <el-menu-item index="/servers"><el-icon><Monitor/></el-icon><span>节点监控</span></el-menu-item>
         <el-menu-item index="/certs"><el-icon><Lock/></el-icon><span>SSL证书</span></el-menu-item>
+        <el-menu-item index="/traffic"><el-icon><TrendCharts/></el-icon><span>流量统计</span></el-menu-item>
         <el-menu-item index="/sync"><el-icon><Share/></el-icon><span>从节点</span></el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting/></el-icon><span>系统设置</span></el-menu-item>
       </el-menu>

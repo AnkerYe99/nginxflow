@@ -285,9 +285,9 @@ func PreviewRule(c *gin.Context) {
 
 // validateRule checks rule fields for validity.
 func validateRule(r *ruleReq) error {
-	valid := map[string]bool{"http": true, "tcp": true, "udp": true}
+	valid := map[string]bool{"http": true, "tcp": true, "udp": true, "tcpudp": true}
 	if !valid[r.Protocol] {
-		return errMsg("protocol 必须是 http/tcp/udp")
+		return errMsg("protocol 必须是 http/tcp/udp/tcpudp")
 	}
 	validStack := map[string]bool{"": true, "v4": true, "v6": true, "both": true}
 	if !validStack[r.ListenStack] {

@@ -15,6 +15,7 @@
             <el-radio-button label="http+https">HTTP + HTTPS</el-radio-button>
             <el-radio-button label="tcp">TCP</el-radio-button>
             <el-radio-button label="udp">UDP</el-radio-button>
+            <el-radio-button label="tcpudp">TCP + UDP</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
@@ -58,7 +59,7 @@
         </template>
 
         <!-- TCP/UDP 端口 -->
-        <el-form-item v-if="mode==='tcp' || mode==='udp'" label="监听端口" required>
+        <el-form-item v-if="mode==='tcp' || mode==='udp' || mode==='tcpudp'" label="监听端口" required>
           <el-input-number v-model="form.listen_port" :min="1" :max="65535" />
         </el-form-item>
 
@@ -156,6 +157,7 @@ function onModeChange(v) {
   if (v === 'http+https') { form.value.listen_port = 80;  form.value.https_enabled = 1; form.value.https_port = 443 }
   if (v === 'tcp')        { form.value.listen_port = 8080; form.value.https_enabled = 0 }
   if (v === 'udp')        { form.value.listen_port = 8080; form.value.https_enabled = 0 }
+  if (v === 'tcpudp')     { form.value.listen_port = 8080; form.value.https_enabled = 0 }
 }
 
 const form = ref({
@@ -176,6 +178,7 @@ function addServer() {
 function modeToForm() {
   if (mode.value === 'tcp')        form.value.protocol = 'tcp'
   else if (mode.value === 'udp')   form.value.protocol = 'udp'
+  else if (mode.value === 'tcpudp') form.value.protocol = 'tcpudp'
   else                             form.value.protocol = 'http'
 
   form.value.https_enabled = (mode.value === 'https' || mode.value === 'http+https') ? 1 : 0
@@ -187,6 +190,7 @@ function modeToForm() {
 function formToMode(protocol, httpsEnabled, listenPort) {
   if (protocol === 'tcp') return 'tcp'
   if (protocol === 'udp') return 'udp'
+  if (protocol === 'tcpudp') return 'tcpudp'
   if (httpsEnabled === 1) return listenPort > 0 ? 'http+https' : 'https'
   return 'http'
 }
@@ -202,9 +206,10 @@ async function submit() {
   // 域名为空时传 _ 表示匹配所有
   if (!payload.server_name || !payload.server_name.trim()) payload.server_name = '_'
 
-  if (payload.protocol !== 'http') {
+  if (!['http'].includes(payload.protocol)) {
     payload.https_enabled = 0; payload.https_port = null
-    payload.ssl_cert_id = null; payload.ssl_redirect = 0; payload.server_name = ''
+    payload.ssl_cert_id = null; payload.ssl_redirect = 0
+    if (payload.protocol !== 'http') payload.server_name = ''
   }
   if (payload.https_enabled !== 1) {
     payload.https_port = null; payload.ssl_cert_id = null; payload.ssl_redirect = 0

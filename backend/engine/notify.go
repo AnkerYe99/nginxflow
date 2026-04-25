@@ -67,12 +67,16 @@ func SendNotify(notifyKey, subject, body string) error {
 		return err
 	}
 
-	from := cfg.from
-	if from == "" {
-		from = cfg.user
+	// 信封发件人（MAIL FROM）必须和登录账号一致，163/126 等服务商强制要求
+	envelopeFrom := extractAddr(cfg.user)
+
+	// From 头只影响显示名称，用配置的 smtp_from；没填则直接用账号
+	displayFrom := cfg.from
+	if displayFrom == "" {
+		displayFrom = cfg.user
 	}
 
-	msg := "From: NginxFlow <" + from + ">\r\n" +
+	msg := "From: " + displayFrom + "\r\n" +
 		"To: " + cfg.to + "\r\n" +
 		"Subject: " + subject + "\r\n" +
 		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
@@ -82,9 +86,9 @@ func SendNotify(notifyKey, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", cfg.host, cfg.port)
 
 	if cfg.useTLS {
-		return sendTLS(addr, cfg, from, msg)
+		return sendTLS(addr, cfg, envelopeFrom, msg)
 	}
-	return sendSTARTTLS(addr, cfg, from, msg)
+	return sendSTARTTLS(addr, cfg, envelopeFrom, msg)
 }
 
 func sendTLS(addr string, cfg smtpCfg, from, msg string) error {
@@ -111,6 +115,17 @@ func sendSTARTTLS(addr string, cfg smtpCfg, from, msg string) error {
 	auth := smtp.PlainAuth("", cfg.user, cfg.password, host)
 	_ = &tls.Config{ServerName: host}
 	return smtp.SendMail(addr, auth, from, strings.Split(cfg.to, ","), []byte(msg))
+}
+
+// extractAddr 从 "Name <addr>" 中提取纯地址，没有尖括号则原样返回
+func extractAddr(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "<"); i >= 0 {
+		if j := strings.Index(s[i:], ">"); j >= 0 {
+			return strings.TrimSpace(s[i+1 : i+j])
+		}
+	}
+	return s
 }
 
 func sendMail(client *smtp.Client, from, to, msg string) error {

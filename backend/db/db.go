@@ -40,7 +40,7 @@ func migrate() error {
 		`CREATE TABLE IF NOT EXISTS rules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
-			protocol TEXT NOT NULL CHECK(protocol IN ('http','tcp','udp')),
+			protocol TEXT NOT NULL CHECK(protocol IN ('http','tcp','udp','tcpudp')),
 			listen_port INTEGER NOT NULL,
 			listen_stack TEXT DEFAULT 'both' CHECK(listen_stack IN ('v4','v6','both')),
 			https_enabled INTEGER DEFAULT 0,
@@ -109,6 +109,35 @@ func migrate() error {
 				(SELECT id FROM health_check_logs ORDER BY id DESC LIMIT 1 OFFSET 10000);
 			END`,
 		`CREATE TABLE IF NOT EXISTS system_settings (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS rule_stats (
+			rule_id  INTEGER NOT NULL,
+			date     TEXT NOT NULL,
+			requests INTEGER DEFAULT 0,
+			bytes_out INTEGER DEFAULT 0,
+			s1xx INTEGER DEFAULT 0,
+			s2xx INTEGER DEFAULT 0,
+			s3xx INTEGER DEFAULT 0,
+			s4xx INTEGER DEFAULT 0,
+			s5xx INTEGER DEFAULT 0,
+			PRIMARY KEY (rule_id, date)
+		)`,
+		`CREATE TABLE IF NOT EXISTS log_parse_state (
+			log_file TEXT PRIMARY KEY,
+			inode    INTEGER DEFAULT 0,
+			offset   INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS server_stats (
+			server_id INTEGER NOT NULL,
+			date      TEXT NOT NULL,
+			requests  INTEGER DEFAULT 0,
+			bytes_out INTEGER DEFAULT 0,
+			s1xx INTEGER DEFAULT 0,
+			s2xx INTEGER DEFAULT 0,
+			s3xx INTEGER DEFAULT 0,
+			s4xx INTEGER DEFAULT 0,
+			s5xx INTEGER DEFAULT 0,
+			PRIMARY KEY (server_id, date)
+		)`,
 		`CREATE TABLE IF NOT EXISTS sync_nodes (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,

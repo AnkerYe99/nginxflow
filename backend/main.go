@@ -46,6 +46,7 @@ func main() {
 	}
 	health.StartAll()
 	log.Println("[health] workers started")
+	engine.StartStatsWorker()
 	go startCertAutoRenew()
 	go engine.StartSlaveSyncAgent()
 
@@ -89,6 +90,7 @@ func main() {
 
 		auth.GET("/certs", handler.ListCerts)
 		auth.POST("/certs", handler.UploadCert)
+		auth.POST("/certs/apply", handler.ApplyCert)
 		auth.GET("/certs/:id", handler.GetCert)
 		auth.DELETE("/certs/:id", handler.DeleteCert)
 		auth.PUT("/certs/:id/auto_renew", handler.ToggleAutoRenew)
@@ -98,6 +100,8 @@ func main() {
 		auth.GET("/stats/overview", handler.Overview)
 		auth.GET("/stats/health", handler.Health)
 		auth.GET("/stats/system", handler.System)
+		auth.GET("/stats/traffic", handler.RuleTraffic)
+		auth.GET("/stats/server_health", handler.ServerHealth)
 
 		auth.GET("/settings", handler.GetSettings)
 		auth.PUT("/settings", handler.UpdateSettings)

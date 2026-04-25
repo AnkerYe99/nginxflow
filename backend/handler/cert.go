@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -142,6 +143,50 @@ func ToggleAutoRenew(c *gin.Context) {
 	c.ShouldBindJSON(&req)
 	db.DB.Exec(`UPDATE ssl_certs SET auto_renew=? WHERE id=?`, req.AutoRenew, id)
 	util.OK(c, nil)
+}
+
+// ApplyCert 输入域名自动申请 Let's Encrypt 证书（DNS-01，异步）
+func ApplyCert(c *gin.Context) {
+	var req struct {
+		Domain    string `json:"domain" binding:"required"`
+		AutoRenew int    `json:"auto_renew"`
+	}
+	req.AutoRenew = 1
+	if err := c.ShouldBindJSON(&req); err != nil {
+		util.Fail(c, 400, "参数错误")
+		return
+	}
+	domain := strings.TrimSpace(req.Domain)
+	if domain == "" {
+		util.Fail(c, 400, "域名不能为空")
+		return
+	}
+
+	// 域名已存在则直接报错
+	var existID int64
+	db.DB.QueryRow(`SELECT id FROM ssl_certs WHERE domain=?`, domain).Scan(&existID)
+	if existID > 0 {
+		util.Fail(c, 400, "域名 "+domain+" 的证书已存在，如需更新请使用续签功能")
+		return
+	}
+
+	// 插入占位记录，让日志弹窗可以立即显示
+	res, err := db.DB.Exec(`INSERT INTO ssl_certs(domain,cert_pem,key_pem,expire_at,auto_renew,renew_status)
+		VALUES(?,?,?,?,?,?)`,
+		domain, "(申请中)", "(申请中)", "2000-01-01 00:00:00", req.AutoRenew, "pending")
+	if err != nil {
+		util.Fail(c, 500, "创建证书记录失败: "+err.Error())
+		return
+	}
+	id, _ := res.LastInsertId()
+
+	if err := engine.RenewCert(id, domain); err != nil {
+		db.DB.Exec(`DELETE FROM ssl_certs WHERE id=?`, id)
+		util.Fail(c, 500, err.Error())
+		return
+	}
+
+	util.OK(c, gin.H{"id": id, "domain": domain, "msg": "已提交申请，正在后台申请证书（约 5-30 分钟）"})
 }
 
 func ManualRenew(c *gin.Context) {

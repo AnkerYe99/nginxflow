@@ -14,7 +14,7 @@
           <el-table-column prop="name" label="名称" min-width="120" />
           <el-table-column label="类型" width="70">
             <template #default="{row}">
-              <el-tag :type="protoTagType(row.protocol)" size="small">{{ row.protocol.toUpperCase() }}</el-tag>
+              <el-tag :type="protoTagType(row.protocol)" size="small">{{ protoLabel(row.protocol) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="端口" width="180">
@@ -159,7 +159,8 @@ async function load() {
   try { list.value = (await api.get('/rules')).data } catch {}
   loading.value = false
 }
-function protoTagType(p) { return {http:'primary', tcp:'warning', udp:'danger'}[p] || 'info' }
+function protoTagType(p) { return {http:'primary', tcp:'warning', udp:'danger', tcpudp:'warning'}[p] || 'info' }
+function protoLabel(p) { return {http:'HTTP', https:'HTTPS', tcp:'TCP', udp:'UDP', tcpudp:'TCP+UDP'}[p] || p?.toUpperCase() }
 function lbLabel(m) { return {round_robin:'轮询', ip_hash:'IP哈希', least_conn:'最少连接'}[m] || m }
 function stackLabel(s) { return {v4:'v4', v6:'v6', both:'v4+v6'}[s||'both'] }
 function stackType(s)  { return {v4:'info', v6:'warning', both:'success'}[s||'both'] }

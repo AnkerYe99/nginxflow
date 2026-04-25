@@ -117,7 +117,7 @@ func RenderRule(r *model.Rule) (string, error) {
 	switch r.Protocol {
 	case "http":
 		return renderHTTP(r, upServers), nil
-	case "tcp", "udp":
+	case "tcp", "udp", "tcpudp":
 		return renderStream(r, upServers), nil
 	}
 	return "", fmt.Errorf("unknown protocol: %s", r.Protocol)
@@ -164,7 +164,7 @@ func renderHTTP(r *model.Rule, servers []model.Server) string {
 		sb.WriteString("server {\n")
 		sb.WriteString(renderListen(r.ListenStack, r.ListenPort, ""))
 		sb.WriteString(fmt.Sprintf("    server_name %s;\n", sn))
-		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_access.log combined;\n", config.Global.Nginx.LogDir, r.ID))
+		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_access.log nginxflow_http;\n", config.Global.Nginx.LogDir, r.ID))
 		sb.WriteString(fmt.Sprintf("    error_log  %s/rule_%d_error.log warn;\n", config.Global.Nginx.LogDir, r.ID))
 
 		if r.HTTPSEnabled == 1 && r.SSLRedirect == 1 && r.HTTPSPort != nil {
@@ -192,7 +192,7 @@ func renderHTTP(r *model.Rule, servers []model.Server) string {
 		sb.WriteString("    ssl_protocols TLSv1.2 TLSv1.3;\n")
 		sb.WriteString("    ssl_ciphers HIGH:!aNULL:!MD5;\n")
 		sb.WriteString("    ssl_session_cache shared:SSL:10m;\n")
-		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_access.log combined;\n", config.Global.Nginx.LogDir, r.ID))
+		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_access.log nginxflow_http;\n", config.Global.Nginx.LogDir, r.ID))
 		sb.WriteString(fmt.Sprintf("    error_log  %s/rule_%d_error.log warn;\n", config.Global.Nginx.LogDir, r.ID))
 		sb.WriteString(proxyBlock(r.ID))
 		if r.CustomConfig != "" {
@@ -217,6 +217,28 @@ func renderStream(r *model.Rule, servers []model.Server) string {
 		sb.WriteString(fmt.Sprintf("    server %s weight=%d;\n", formatBackend(s.Address, s.Port), s.Weight))
 	}
 	sb.WriteString("}\n")
+
+	// TCP+UDP 模式：生成两个 server 块，共用同一个 upstream
+	if r.Protocol == "tcpudp" {
+		// TCP server block
+		sb.WriteString("server {\n")
+		sb.WriteString(renderListen(r.ListenStack, r.ListenPort, ""))
+		sb.WriteString("    proxy_timeout 600s;\n")
+		sb.WriteString("    proxy_connect_timeout 5s;\n")
+		sb.WriteString(fmt.Sprintf("    proxy_pass nf_stream_%d;\n", r.ID))
+		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_stream.log basic;\n", config.Global.Nginx.LogDir, r.ID))
+		sb.WriteString("}\n")
+		// UDP server block
+		sb.WriteString("server {\n")
+		sb.WriteString(renderListen(r.ListenStack, r.ListenPort, "udp"))
+		sb.WriteString("    proxy_timeout 3s;\n")
+		sb.WriteString("    proxy_responses 1;\n")
+		sb.WriteString(fmt.Sprintf("    proxy_pass nf_stream_%d;\n", r.ID))
+		sb.WriteString(fmt.Sprintf("    access_log %s/rule_%d_stream.log basic;\n", config.Global.Nginx.LogDir, r.ID))
+		sb.WriteString("}\n")
+		return sb.String()
+	}
+
 	sb.WriteString("server {\n")
 	if r.Protocol == "udp" {
 		sb.WriteString(renderListen(r.ListenStack, r.ListenPort, "udp"))
@@ -392,7 +414,7 @@ func removeRuleFiles(ruleID int64, protocol string) error {
 	switch protocol {
 	case "http", "https":
 		suffix = "http"
-	case "tcp", "udp":
+	case "tcp", "udp", "tcpudp":
 		suffix = "stream"
 	default:
 		// 两种都删

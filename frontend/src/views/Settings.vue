@@ -56,30 +56,51 @@
           <el-input v-model="form.tencent_secret_key" type="password" show-password placeholder="未修改保持为空" />
         </el-form-item>
 
-        <el-divider>邮件通知 (SMTP)</el-divider>
-        <el-form-item label="SMTP 服务器">
-          <el-input v-model="form.smtp_host" placeholder="smtp.example.com" style="width:240px" />
-          <el-input-number v-model.number="form.smtp_port" :min="1" :max="65535"
-            placeholder="端口" style="width:100px;margin-left:8px" />
-          <el-switch v-model="smtpTLS" style="margin-left:12px"
-            active-text="SSL/TLS" inactive-text="STARTTLS"
-            @change="v => form.smtp_tls = v ? '1' : '0'" />
+        <el-divider>邮件通知</el-divider>
+        <el-form-item label="邮箱服务商">
+          <el-select v-model="smtpProvider" style="width:160px" @change="onProviderChange">
+            <el-option v-for="p in smtpPresets" :key="p.value" :label="p.name" :value="p.value" />
+            <el-option label="自定义" value="custom" />
+          </el-select>
+          <span v-if="smtpProvider && smtpProvider !== 'custom'" style="margin-left:12px;font-size:12px;color:#909399">
+            已自动填入 {{ currentPreset?.host }}:{{ currentPreset?.port }} · {{ currentPreset?.tls ? 'SSL/TLS' : 'STARTTLS' }}
+          </span>
         </el-form-item>
-        <el-form-item label="SMTP 用户名">
-          <el-input v-model="form.smtp_user" placeholder="user@example.com" />
+        <el-form-item label="用户名（邮箱地址）">
+          <el-input v-model="form.smtp_user" :placeholder="currentPreset?.userPlaceholder || 'user@example.com'" />
         </el-form-item>
-        <el-form-item label="SMTP 密码">
-          <el-input v-model="form.smtp_password" type="password" show-password placeholder="未修改保持为空" />
-        </el-form-item>
-        <el-form-item label="发件人地址">
-          <el-input v-model="form.smtp_from" placeholder="NginxFlow <noreply@example.com>" />
-          <div style="color:#999;font-size:12px;margin-top:4px">留空则使用 SMTP 用户名</div>
+        <el-form-item label="密码">
+          <el-input v-model="form.smtp_password" type="password" show-password
+            :placeholder="currentPreset?.needAuthCode ? '授权码（非登录密码）' : '密码'" />
+          <div v-if="currentPreset?.needAuthCode" style="color:#e6a23c;font-size:12px;margin-top:4px">
+            ⚠️ 须填<b>授权码</b>，不是邮箱登录密码。<br>
+            获取方式：网页登录邮箱 → 设置 → POP3/SMTP/IMAP → 开启 SMTP 服务 → 新增授权密码
+          </div>
         </el-form-item>
         <el-form-item label="收件人地址">
           <el-input v-model="form.notify_email_to" placeholder="admin@example.com，多个用英文逗号分隔" />
         </el-form-item>
         <el-form-item label="">
           <el-button size="small" @click="testEmail" :loading="testingEmail">发送测试邮件</el-button>
+        </el-form-item>
+        <!-- 高级设置：自定义或微调时展开 -->
+        <el-form-item label="">
+          <el-collapse style="width:100%;border:none">
+            <el-collapse-item title="高级设置（自定义 SMTP 服务器时展开）" name="adv">
+              <el-form-item label="SMTP 服务器" style="margin-bottom:12px">
+                <el-input v-model="form.smtp_host" placeholder="smtp.example.com" style="width:220px" />
+                <el-input-number v-model.number="form.smtp_port" :min="1" :max="65535"
+                  placeholder="端口" style="width:90px;margin-left:8px" />
+                <el-switch v-model="smtpTLS" style="margin-left:12px"
+                  active-text="SSL/TLS" inactive-text="STARTTLS"
+                  @change="v => form.smtp_tls = v ? '1' : '0'" />
+              </el-form-item>
+              <el-form-item label="发件人显示名" style="margin-bottom:0">
+                <el-input v-model="form.smtp_from" placeholder="NginxFlow <noreply@example.com>" />
+                <div style="color:#999;font-size:12px;margin-top:4px">留空则使用用户名。注意：163/126 信封发件人固定为用户名，此字段仅影响显示</div>
+              </el-form-item>
+            </el-collapse-item>
+          </el-collapse>
         </el-form-item>
 
         <el-divider>通知类型</el-divider>
@@ -144,6 +165,34 @@ import api from '../api'
 
 const form = ref({})
 const testingEmail = ref(false)
+const smtpProvider = ref('')
+
+const smtpPresets = [
+  { value: '163',     name: '163邮箱',   host: 'smtp.163.com',       port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'yourname@163.com' },
+  { value: '126',     name: '126邮箱',   host: 'smtp.126.com',       port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'yourname@126.com' },
+  { value: 'yeah',    name: 'yeah邮箱',  host: 'smtp.yeah.net',      port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'yourname@yeah.net' },
+  { value: 'qq',      name: 'QQ邮箱',    host: 'smtp.qq.com',        port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'yourQQ@qq.com' },
+  { value: 'gmail',   name: 'Gmail',     host: 'smtp.gmail.com',     port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'you@gmail.com' },
+  { value: 'outlook', name: 'Outlook',   host: 'smtp.office365.com', port: 587, tls: false, needAuthCode: false, userPlaceholder: 'you@outlook.com' },
+  { value: 'qq_ent',  name: '腾讯企业邮', host: 'smtp.exmail.qq.com', port: 465, tls: true,  needAuthCode: false, userPlaceholder: 'you@yourcompany.com' },
+  { value: 'ali',     name: '阿里企业邮', host: 'smtp.qiye.aliyun.com', port: 465, tls: true, needAuthCode: false, userPlaceholder: 'you@yourcompany.com' },
+]
+
+const currentPreset = computed(() => smtpPresets.find(p => p.value === smtpProvider.value) || null)
+
+function onProviderChange(val) {
+  const p = smtpPresets.find(x => x.value === val)
+  if (!p) return
+  form.value.smtp_host = p.host
+  form.value.smtp_port = p.port
+  form.value.smtp_tls  = p.tls ? '1' : '0'
+}
+
+function detectProvider(host) {
+  if (!host) return ''
+  const p = smtpPresets.find(x => x.host === host)
+  return p ? p.value : 'custom'
+}
 
 const slaveStatus = computed(() => !!form.value.slave_last_sync_at)
 
@@ -156,6 +205,7 @@ async function load() {
   form.value = (await api.get('/settings')).data
   if (form.value.smtp_port) form.value.smtp_port = Number(form.value.smtp_port)
   if (form.value.slave_interval) form.value.slave_interval = Number(form.value.slave_interval)
+  smtpProvider.value = detectProvider(form.value.smtp_host)
 }
 
 async function save() {

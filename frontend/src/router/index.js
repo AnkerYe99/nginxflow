@@ -13,6 +13,7 @@ const routes = [
       { path: 'rules/:id/edit', name: 'rule-edit', component: () => import('../views/RuleForm.vue') },
       { path: 'servers', name: 'servers', component: () => import('../views/Servers.vue') },
       { path: 'certs', name: 'certs', component: () => import('../views/Certs.vue') },
+      { path: 'traffic', name: 'traffic', component: () => import('../views/Traffic.vue') },
       { path: 'sync', name: 'sync', component: () => import('../views/SyncNodes.vue') },
       { path: 'settings', name: 'settings', component: () => import('../views/Settings.vue') }
     ]

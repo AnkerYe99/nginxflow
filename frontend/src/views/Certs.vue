@@ -2,7 +2,10 @@
   <div>
     <div style="display:flex;justify-content:space-between;margin-bottom:16px">
       <h2>SSL 证书</h2>
-      <el-button type="primary" icon="Plus" @click="openUpload">上传证书</el-button>
+      <div style="display:flex;gap:8px">
+        <el-button type="success" icon="MagicStick" @click="openApply">申请证书</el-button>
+        <el-button type="primary" icon="Plus" @click="openUpload">上传证书</el-button>
+      </div>
     </div>
     <el-card>
       <el-table :data="list" size="small">
@@ -37,6 +40,27 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 申请证书对话框 -->
+    <el-dialog v-model="applyShow" title="申请 SSL 证书（Let's Encrypt）" width="480px" :close-on-click-modal="false">
+      <el-alert type="info" :closable="false" style="margin-bottom:16px">
+        通过 DNS-01 自动申请免费证书，需在<b>系统设置</b>中配置 DNSPod 或腾讯云 DNS API 及 ACME 邮箱。
+      </el-alert>
+      <el-form :model="applyForm" label-width="90px">
+        <el-form-item label="域名" required>
+          <el-input v-model="applyForm.domain" placeholder="例如：example.com 或 sub.example.com"
+            clearable @keyup.enter="applySubmit" />
+        </el-form-item>
+        <el-form-item label="自动续签">
+          <el-switch v-model="applyForm.auto_renew" :active-value="1" :inactive-value="0" />
+          <span style="margin-left:8px;font-size:12px;color:#999">到期前 10 天自动触发</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="applyShow=false">取消</el-button>
+        <el-button type="success" :loading="applying" @click="applySubmit">开始申请</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 上传证书对话框 -->
     <el-dialog v-model="uploadShow" title="上传 SSL 证书" width="700px" :close-on-click-modal="false">
@@ -102,6 +126,32 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const list = ref([])
+
+// 申请证书
+const applyShow = ref(false)
+const applying = ref(false)
+const applyForm = ref({ domain: '', auto_renew: 1 })
+
+function openApply() {
+  applyForm.value = { domain: '', auto_renew: 1 }
+  applyShow.value = true
+}
+
+async function applySubmit() {
+  const domain = applyForm.value.domain.trim()
+  if (!domain) return ElMessage.warning('请输入域名')
+  applying.value = true
+  try {
+    const res = await api.post('/certs/apply', applyForm.value)
+    ElMessage.success(res.data.msg || '已提交申请')
+    applyShow.value = false
+    await load()
+    const newRow = list.value.find(r => r.id === res.data.id)
+    if (newRow) openLog(newRow)
+  } catch {}
+  applying.value = false
+}
+
 const uploadShow = ref(false)
 const uploading = ref(false)
 const form = ref({ cert_pem: '', key_pem: '', auto_renew: 1 })

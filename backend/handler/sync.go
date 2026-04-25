@@ -27,41 +27,92 @@ func SyncExport(c *gin.Context) {
 		return
 	}
 
-	// 收集证书
-	certs := map[string]gin.H{}
-	rows, _ := db.DB.Query(`SELECT domain,cert_pem,key_pem FROM ssl_certs`)
-	if rows != nil {
-		for rows.Next() {
-			var domain, cert, key string
-			rows.Scan(&domain, &cert, &key)
-			certs[domain] = gin.H{"cert_pem": cert, "key_pem": key}
+	// 导出完整规则数据（含后端节点），从节点写入本地 DB 以便 UI 显示
+	rules := []gin.H{}
+	rrows, _ := db.DB.Query(`SELECT id,name,protocol,listen_port,IFNULL(listen_stack,'both'),
+		https_enabled,IFNULL(https_port,0),IFNULL(server_name,''),lb_method,
+		IFNULL(ssl_cert_id,0),ssl_redirect,hc_enabled,hc_interval,hc_timeout,
+		IFNULL(hc_path,'/'),hc_fall,hc_rise,IFNULL(log_max_size,'5M'),
+		IFNULL(custom_config,''),status FROM rules ORDER BY id`)
+	if rrows != nil {
+		for rrows.Next() {
+			var id, listenPort, httpsEnabled, httpsPort, sslCertID, sslRedirect int64
+			var hcEnabled, hcInterval, hcTimeout, hcFall, hcRise, status int64
+			var name, protocol, listenStack, serverName, lbMethod, hcPath, logMaxSize, customConfig string
+			rrows.Scan(&id, &name, &protocol, &listenPort, &listenStack,
+				&httpsEnabled, &httpsPort, &serverName, &lbMethod,
+				&sslCertID, &sslRedirect, &hcEnabled, &hcInterval, &hcTimeout,
+				&hcPath, &hcFall, &hcRise, &logMaxSize, &customConfig, &status)
+
+			// 查该规则的后端节点
+			servers := []gin.H{}
+			srows, _ := db.DB.Query(`SELECT address,port,weight,state FROM upstream_servers WHERE rule_id=? ORDER BY id`, id)
+			if srows != nil {
+				for srows.Next() {
+					var addr, state string
+					var port, weight int64
+					srows.Scan(&addr, &port, &weight, &state)
+					servers = append(servers, gin.H{"address": addr, "port": port, "weight": weight, "state": state})
+				}
+				srows.Close()
+			}
+
+			rules = append(rules, gin.H{
+				"id": id, "name": name, "protocol": protocol,
+				"listen_port": listenPort, "listen_stack": listenStack,
+				"https_enabled": httpsEnabled, "https_port": httpsPort,
+				"server_name": serverName, "lb_method": lbMethod,
+				"ssl_cert_id": sslCertID, "ssl_redirect": sslRedirect,
+				"hc_enabled": hcEnabled, "hc_interval": hcInterval, "hc_timeout": hcTimeout,
+				"hc_path": hcPath, "hc_fall": hcFall, "hc_rise": hcRise,
+				"log_max_size": logMaxSize, "custom_config": customConfig, "status": status,
+				"servers": servers,
+			})
 		}
-		rows.Close()
+		rrows.Close()
+	}
+
+	// 导出完整证书数据
+	certs := []gin.H{}
+	certMap := map[string]gin.H{} // 兼容旧版从节点的 map 格式
+	crows, _ := db.DB.Query(`SELECT domain,cert_pem,key_pem,IFNULL(expire_at,''),IFNULL(auto_renew,0) FROM ssl_certs ORDER BY id`)
+	if crows != nil {
+		for crows.Next() {
+			var domain, certPEM, keyPEM, expireAt string
+			var autoRenew int64
+			crows.Scan(&domain, &certPEM, &keyPEM, &expireAt, &autoRenew)
+			certs = append(certs, gin.H{
+				"domain": domain, "cert_pem": certPEM, "key_pem": keyPEM,
+				"expire_at": expireAt, "auto_renew": autoRenew,
+			})
+			certMap[domain] = gin.H{"cert_pem": certPEM, "key_pem": keyPEM}
+		}
+		crows.Close()
 	}
 
 	// 导出通知/SMTP 等系统设置（排除敏感和主节点专属字段）
 	settings := map[string]string{}
 	skipKeys := map[string]bool{
 		"tencent_secret_id": true, "tencent_secret_key": true,
+		"acme_email": true, "acme_account_json": true, "acme_account_key": true,
+		"dnspod_id": true, "dnspod_key": true,
 		"sync_token": true, "slave_master_url": true, "slave_sync_token": true,
 		"slave_interval": true, "slave_last_sync_at": true, "slave_last_status": true, "slave_last_msg": true,
 	}
-	rows2, _ := db.DB.Query(`SELECT k,v FROM system_settings`)
-	if rows2 != nil {
-		for rows2.Next() {
+	srows2, _ := db.DB.Query(`SELECT k,v FROM system_settings`)
+	if srows2 != nil {
+		for srows2.Next() {
 			var k, v string
-			rows2.Scan(&k, &v)
+			srows2.Scan(&k, &v)
 			if !skipKeys[k] {
 				settings[k] = v
 			}
 		}
-		rows2.Close()
+		srows2.Close()
 	}
 
-	// 客户端上报自己的地址（可选）
-	fromAddr := c.ClientIP()
-
 	// 记录/更新从节点
+	fromAddr := c.ClientIP()
 	db.DB.Exec(`INSERT INTO sync_nodes(name,address,last_sync_at,last_version,status)
 		VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING`,
 		fromAddr, fromAddr, time.Now().Format("2006-01-02 15:04:05"), version, "ok")
@@ -72,7 +123,9 @@ func SyncExport(c *gin.Context) {
 		"version":       version,
 		"generated_at":  time.Now().Format(time.RFC3339),
 		"nginx_configs": configs,
+		"rules":         rules,
 		"certs":         certs,
+		"cert_map":      certMap,
 		"settings":      settings,
 	})
 }
