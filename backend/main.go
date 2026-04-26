@@ -59,6 +59,7 @@ func main() {
 	r.GET("/api/v1/rules/:id/logs/stream", handler.StreamRuleLogs)
 
 	// 无需 JWT
+	r.GET("/api/v1/version", handler.GetVersion)
 	r.POST("/api/v1/auth/login", handler.Login)
 	r.GET("/api/v1/sync/export", handler.SyncExport)
 	r.GET("/api/v1/sync/rules_export", handler.SyncRulesExport)
@@ -109,6 +110,9 @@ func main() {
 		auth.GET("/stats/server_health", handler.ServerHealth)
 		auth.GET("/stats/errors", handler.ListErrorLogs)
 		auth.GET("/rules/simple", handler.ListRulesSimple)
+
+		auth.GET("/update/check", handler.CheckUpdate)
+		auth.POST("/update/apply", handler.ApplyUpdate)
 
 		auth.GET("/settings", handler.GetSettings)
 		auth.PUT("/settings", handler.UpdateSettings)

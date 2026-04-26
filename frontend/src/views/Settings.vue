@@ -266,6 +266,68 @@
       </el-tab-pane>
 
       <!-- ── 数据管理 ── -->
+      <!-- ── 系统更新 ── -->
+      <el-tab-pane label="系统更新" name="update">
+        <el-card shadow="never" class="section-card">
+          <template #header>
+            <span class="card-title">在线升级</span>
+            <span class="card-subtitle">从仓库拉取最新版本，数据库与配置文件完整保留</span>
+          </template>
+
+          <!-- 版本信息 -->
+          <div class="update-version-row">
+            <div class="update-version-item">
+              <span class="update-label">当前版本</span>
+              <el-tag size="large" type="info" effect="plain">{{ updateInfo.current || '—' }}</el-tag>
+            </div>
+            <div class="update-version-arrow">→</div>
+            <div class="update-version-item">
+              <span class="update-label">最新版本</span>
+              <el-tag size="large" :type="updateInfo.has_update ? 'success' : 'info'" effect="plain">
+                {{ updateInfo.latest || '—' }}
+              </el-tag>
+            </div>
+            <div v-if="updateInfo.source" class="update-source">
+              <el-tag size="small" type="warning" effect="plain">{{ updateInfo.source }}</el-tag>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="update-actions">
+            <el-button :icon="Refresh" @click="checkUpdate" :loading="checking">检查更新</el-button>
+            <el-button
+              type="primary"
+              :icon="Upload"
+              :loading="upgrading"
+              :disabled="!updateInfo.has_update || upgrading"
+              @click="applyUpdate"
+            >
+              {{ upgrading ? '升级中…' : '立即升级' }}
+            </el-button>
+          </div>
+
+          <!-- 更新说明 -->
+          <div v-if="updateInfo.notes" class="update-notes">
+            <div class="update-notes-title">更新说明</div>
+            <pre class="update-notes-body">{{ updateInfo.notes }}</pre>
+          </div>
+
+          <!-- 未找到更新 -->
+          <div v-if="updateChecked && !updateInfo.has_update" class="update-ok">
+            <el-icon color="#67c23a"><CircleCheck /></el-icon> 已是最新版本
+          </div>
+
+          <!-- 内网 Gitea 配置 -->
+          <el-divider content-position="left" style="margin-top:24px">内网 Gitea 配置（可选）</el-divider>
+          <el-form label-width="130px" style="max-width:520px">
+            <el-form-item label="Gitea 地址">
+              <el-input v-model="form.update_gitea_url" placeholder="http://10.x.x.x:3000（留空则使用 GitHub）" clearable />
+              <div class="field-hint">填写后优先从内网 Gitea 检查并下载更新，留空使用 GitHub</div>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-tab-pane>
+
       <el-tab-pane label="数据管理" name="data">
         <div class="two-col">
           <el-card shadow="never" class="section-card data-card">
@@ -306,6 +368,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Upload, CircleCheck } from '@element-plus/icons-vue'
 import api from '../api'
 
 const activeTab = ref('nginx')
@@ -314,6 +377,10 @@ const testingEmail = ref(false)
 const smtpProvider = ref('')
 const triggeringRules = ref(false)
 const triggeringCerts = ref(false)
+const checking = ref(false)
+const upgrading = ref(false)
+const updateChecked = ref(false)
+const updateInfo = ref({ current: '', latest: '', has_update: false, notes: '', source: '' })
 
 const smtpPresets = [
   { value: '163',     name: '163邮箱',    host: 'smtp.163.com',         port: 465, tls: true,  needAuthCode: true,  userPlaceholder: 'yourname@163.com' },
@@ -464,10 +531,102 @@ function genCertsToken() {
   ElMessage.success('证书同步 Token 已生成，请记得保存')
 }
 
+async function checkUpdate() {
+  checking.value = true
+  updateChecked.value = false
+  try {
+    const res = await api.get('/update/check')
+    updateInfo.value = res.data
+    updateChecked.value = true
+    if (!res.data.has_update) ElMessage.success('已是最新版本 ' + res.data.latest)
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.msg || '检查失败，请确认仓库已发布 Release')
+  }
+  checking.value = false
+}
+
+async function applyUpdate() {
+  try {
+    await ElMessageBox.confirm(
+      `确认升级到 ${updateInfo.value.latest}？\n\n• 数据库与配置文件完整保留\n• 服务将在约 3 秒后自动重启\n• 重启期间页面短暂无响应，刷新即可`,
+      '确认升级', { type: 'warning', confirmButtonText: '确认升级', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  upgrading.value = true
+  try {
+    const res = await api.post('/update/apply')
+    ElMessage.success({ message: res.data.msg, duration: 6000 })
+    setTimeout(() => { upgrading.value = false; checkUpdate() }, 8000)
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.msg || '升级失败')
+    upgrading.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
+.update-version-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.update-version-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.update-label {
+  font-size: 12px;
+  color: #909399;
+}
+.update-version-arrow {
+  font-size: 20px;
+  color: #c0c4cc;
+  margin-top: 14px;
+}
+.update-source {
+  margin-top: 14px;
+}
+.update-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.update-notes {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+.update-notes-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.update-notes-body {
+  font-size: 12px;
+  color: #606266;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.update-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #67c23a;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
 .settings-page {
   padding-bottom: 80px;
 }

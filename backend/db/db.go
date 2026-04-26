@@ -65,8 +65,17 @@ func Init(path string) error {
 	return nil
 }
 
-func migrate() error {
-	schemas := []string{
+// versionedMigrations 是有序的增量迁移列表。
+// 规则：
+//   - version 从 1 开始严格递增，不可删除或修改已有记录
+//   - sql 中每条语句独立执行，ALTER TABLE 失败会被忽略（字段已存在）
+//   - 新增表结构变更在此追加，不要修改已有条目
+var versionedMigrations = []struct {
+	version int
+	name    string
+	sql     []string
+}{
+	{1, "initial_schema", []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT NOT NULL UNIQUE,
@@ -98,7 +107,6 @@ func migrate() error {
 			created_at DATETIME DEFAULT (datetime('now','localtime')),
 			updated_at DATETIME DEFAULT (datetime('now','localtime'))
 		)`,
-		// 迁移：忽略已存在字段的错误
 		`ALTER TABLE rules ADD COLUMN listen_stack TEXT DEFAULT 'both'`,
 		`ALTER TABLE rules ADD COLUMN https_enabled INTEGER DEFAULT 0`,
 		`ALTER TABLE rules ADD COLUMN https_port INTEGER DEFAULT NULL`,
@@ -185,18 +193,68 @@ func migrate() error {
 			last_err TEXT DEFAULT NULL,
 			created_at DATETIME DEFAULT (datetime('now','localtime'))
 		)`,
+	}},
+	// ── 未来迁移示例（按需追加，version 严格递增）──────────────
+	// {2, "add_rule_remark", []string{
+	//     `ALTER TABLE rules ADD COLUMN remark TEXT DEFAULT ''`,
+	// }},
+}
+
+func migrate() error {
+	// 创建迁移版本表
+	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS _schema_version (
+		version    INTEGER NOT NULL PRIMARY KEY,
+		name       TEXT    NOT NULL,
+		applied_at TEXT    NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create _schema_version: %w", err)
 	}
-	for _, s := range schemas {
-		if _, err := DB.Exec(s); err != nil {
-			// ALTER TABLE 会因字段已存在而报错，忽略迁移类错误
-			if len(s) > 12 && s[:12] == "ALTER TABLE " {
-				continue
+
+	// 查询当前已应用的最高版本
+	var current int
+	DB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM _schema_version`).Scan(&current)
+
+	// 若版本表为空但 rules 表已存在，说明是从旧版本升级上来的数据库，
+	// 把所有现有迁移标记为已完成，不重复执行 DDL。
+	if current == 0 {
+		var tableCount int
+		DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='rules'`).Scan(&tableCount)
+		if tableCount > 0 {
+			now := "legacy"
+			for _, m := range versionedMigrations {
+				DB.Exec(`INSERT OR IGNORE INTO _schema_version(version,name,applied_at) VALUES(?,?,?)`,
+					m.version, m.name, now)
 			}
-			return fmt.Errorf("migrate failed on %q: %w", s[:60], err)
+			log.Printf("[db] 检测到旧版数据库，已标记 %d 个迁移为已完成", len(versionedMigrations))
+			current = versionedMigrations[len(versionedMigrations)-1].version
 		}
 	}
 
-	// 默认系统设置
+	// 依次执行尚未应用的迁移
+	for _, m := range versionedMigrations {
+		if m.version <= current {
+			continue
+		}
+		log.Printf("[db] 应用迁移 v%d: %s", m.version, m.name)
+		for _, stmt := range m.sql {
+			if _, err := DB.Exec(stmt); err != nil {
+				// ALTER TABLE 字段已存在时静默跳过
+				if len(stmt) > 11 && stmt[:11] == "ALTER TABLE" {
+					continue
+				}
+				return fmt.Errorf("迁移 v%d (%s) 执行失败: %w", m.version, m.name, err)
+			}
+		}
+		if _, err := DB.Exec(
+			`INSERT INTO _schema_version(version,name,applied_at) VALUES(?,?,datetime('now','localtime'))`,
+			m.version, m.name,
+		); err != nil {
+			return fmt.Errorf("记录迁移版本失败: %w", err)
+		}
+		log.Printf("[db] 迁移 v%d 完成", m.version)
+	}
+
+	// 默认系统设置（INSERT OR IGNORE 保证不覆盖用户已有配置）
 	defaults := map[string]string{
 		"nginx_worker_processes":     "auto",
 		"nginx_worker_connections":   "1024",
@@ -216,6 +274,7 @@ func migrate() error {
 		"notify_server_down":         "1",
 		"notify_server_up":           "0",
 		"default_log_max_size":       "5M",
+		"update_gitea_url":           "",
 	}
 	for k, v := range defaults {
 		DB.Exec(`INSERT OR IGNORE INTO system_settings(k,v) VALUES(?,?)`, k, v)
