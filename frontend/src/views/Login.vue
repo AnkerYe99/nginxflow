@@ -3,7 +3,7 @@
     <el-card class="login-card">
       <div class="title">
         <el-icon :size="40" color="#409EFF"><Promotion /></el-icon>
-        <h2>NginxFlow</h2>
+        <h2>AnkerYe - 流量管理</h2>
         <p>智能流量管理平台</p>
       </div>
       <el-form :model="form" @submit.prevent="onLogin">

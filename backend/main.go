@@ -65,7 +65,7 @@ func main() {
 	r.GET("/api/v1/sync/rules_export", handler.SyncRulesExport)
 	r.GET("/api/v1/sync/certs_export", handler.SyncCertsExport)
 	r.GET("/api/v1/test", func(c *gin.Context) {
-		c.JSON(200, gin.H{"code": 0, "msg": "ok", "service": "nginxflow"})
+		c.JSON(200, gin.H{"code": 0, "msg": "ok", "service": "ankerye-流量管理"})
 	})
 
 	// 需要 JWT
@@ -150,7 +150,7 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%d", config.Global.Server.Port)
-	log.Printf("[nginxflow] listening on %s", addr)
+	log.Printf("[AnkerYe - 流量管理] listening on %s", addr)
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
 	}

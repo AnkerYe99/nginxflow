@@ -2,7 +2,7 @@
 set -e
 
 # ============================================================
-#  NginxFlow 一键安装脚本
+#  AnkerYe - 流量管理 一键安装脚本
 #
 #  公网（GitHub）:
 #    curl -sSL https://raw.githubusercontent.com/AnkerYe99/nginxflow/master/install.sh | bash
@@ -232,7 +232,7 @@ info "Nginx 配置完成"
 step "注册系统服务"
 cat > /etc/systemd/system/nginxflow.service << SVCEOF
 [Unit]
-Description=NginxFlow Server
+Description=AnkerYe - 流量管理 Server
 After=network.target nginx.service
 
 [Service]
@@ -263,7 +263,7 @@ fi
 IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           NginxFlow 安装完成！                   ║${NC}"
+echo -e "${GREEN}║       AnkerYe - 流量管理 安装完成！              ║${NC}"
 echo -e "${GREEN}╠══════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║${NC}  版本:     ${BLUE}$LATEST_TAG${NC}"
 echo -e "${GREEN}║${NC}  访问地址: ${BLUE}http://$IP:$PORT${NC}"

@@ -147,7 +147,7 @@ func renderHTTP(r *model.Rule, servers []model.Server) string {
 		sn = "_"
 	}
 
-	sb.WriteString(fmt.Sprintf("# NginxFlow rule %d: %s (stack=%s)\n", r.ID, r.Name, r.ListenStack))
+	sb.WriteString(fmt.Sprintf("# AnkerYe - 流量管理 rule %d: %s (stack=%s)\n", r.ID, r.Name, r.ListenStack))
 
 	// upstream block
 	sb.WriteString(fmt.Sprintf("upstream nf_%d {\n", r.ID))
@@ -208,7 +208,7 @@ func renderHTTP(r *model.Rule, servers []model.Server) string {
 
 func renderStream(r *model.Rule, servers []model.Server) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# NginxFlow rule %d: %s (stack=%s)\n", r.ID, r.Name, r.ListenStack))
+	sb.WriteString(fmt.Sprintf("# AnkerYe - 流量管理 rule %d: %s (stack=%s)\n", r.ID, r.Name, r.ListenStack))
 	sb.WriteString(fmt.Sprintf("upstream nf_stream_%d {\n", r.ID))
 	if r.LBMethod == "ip_hash" {
 		sb.WriteString("    hash $remote_addr consistent;\n")

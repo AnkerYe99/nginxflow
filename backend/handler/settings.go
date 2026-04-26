@@ -197,7 +197,7 @@ func Backup(c *gin.Context) {
 }
 
 func TestEmail(c *gin.Context) {
-	err := engine.SendNotify("", "NginxFlow 测试邮件", "这是一封来自 NginxFlow 的测试邮件，说明您的 SMTP 配置正确！")
+	err := engine.SendNotify("", "AnkerYe - 流量管理 测试邮件", "这是一封来自 AnkerYe - 流量管理 的测试邮件，说明您的 SMTP 配置正确！")
 	if err != nil {
 		util.Fail(c, 500, err.Error())
 		return

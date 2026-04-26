@@ -38,7 +38,7 @@
             </div>
             <div class="svc-item">
               <el-tag type="success" effect="dark" size="small">运行中</el-tag>
-              <div class="svc-lbl" style="margin-top:6px">nginxflow</div>
+              <div class="svc-lbl" style="margin-top:6px">AnkerYe - 流量管理</div>
             </div>
           </div>
         </el-card>
