@@ -110,8 +110,10 @@ DL_URL=$(echo "$RELEASE_JSON" | _parse_asset_url)
 info "最新版本: $LATEST_TAG"
 info "下载地址: $DL_URL"
 
-curl -fL --progress-bar -o /tmp/nginxflow-server "$DL_URL" || error "下载失败"
-chmod +x /tmp/nginxflow-server
+DL_TMP="/tmp/nginxflow-server"
+[[ ! -w /tmp ]] && DL_TMP="/root/nginxflow-server-dl"
+curl -fL --progress-bar -o "$DL_TMP" "$DL_URL" || error "下载失败"
+chmod +x "$DL_TMP"
 info "下载完成"
 
 # ── 安装 Nginx ──────────────────────────────────────────────
@@ -132,8 +134,8 @@ if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
   systemctl stop "$SERVICE_NAME"
 fi
 mkdir -p "$DATA_DIR" "$LOG_DIR"
-cp /tmp/nginxflow-server "$INSTALL_DIR/nginxflow-server"
-rm -f /tmp/nginxflow-server
+cp "$DL_TMP" "$INSTALL_DIR/nginxflow-server"
+rm -f "$DL_TMP"
 info "二进制已安装到 $INSTALL_DIR/nginxflow-server"
 
 # ── 生成配置（首次安装才写，升级时保留原有配置）────────────────
