@@ -173,12 +173,12 @@ function typeColor(t) {
 
 async function loadBl() {
   blLoading.value = true
-  try { blacklist.value = (await api.get('/filter/blacklist')).data.data || [] } catch {}
+  try { blacklist.value = (await api.get('/filter/blacklist')).data || [] } catch {}
   blLoading.value = false
 }
 async function loadWl() {
   wlLoading.value = true
-  try { whitelist.value = (await api.get('/filter/whitelist')).data.data || [] } catch {}
+  try { whitelist.value = (await api.get('/filter/whitelist')).data || [] } catch {}
   wlLoading.value = false
 }
 
