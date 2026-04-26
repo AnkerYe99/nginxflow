@@ -2,25 +2,25 @@
 set -e
 
 # ============================================================
-#  AnkerYe - 流量管理 一键安装脚本
+#  AnkerYe - 流量管理 (AnkerYe-BTM) 一键安装脚本
 #
 #  公网（GitHub）:
-#    curl -sSL https://raw.githubusercontent.com/AnkerYe99/nginxflow/master/install.sh | bash
+#    curl -sSL https://raw.githubusercontent.com/AnkerYe99/AnkerYe-BTM/master/install.sh | bash
 #
 #  内网（Gitea）:
-#    GITEA_URL=http://10.14.6.51:3000 curl -sSL http://10.14.6.51:3000/anker/nginxflow/raw/branch/master/install.sh | bash
+#    GITEA_URL=http://10.14.6.51:3000 curl -sSL http://10.14.6.51:3000/anker/AnkerYe-BTM/raw/branch/master/install.sh | bash
 #
 #  自定义端口:
-#    NGINXFLOW_PORT=8080 bash install.sh
+#    BTM_PORT=8080 bash install.sh
 # ============================================================
 
-GITEA_REPO="anker/nginxflow"
-GITHUB_REPO="AnkerYe99/nginxflow"
-INSTALL_DIR="/opt/nginxflow"
+GITEA_REPO="anker/AnkerYe-BTM"
+GITHUB_REPO="AnkerYe99/AnkerYe-BTM"
+INSTALL_DIR="/opt/ankerye-btm"
 DATA_DIR="$INSTALL_DIR/data"
-LOG_DIR="/var/log/nginxflow"
-SERVICE_NAME="nginxflow"
-PORT="${NGINXFLOW_PORT:-9000}"
+LOG_DIR="/var/log/ankerye-btm"
+SERVICE_NAME="ankerye-btm"
+PORT="${BTM_PORT:-9000}"
 
 # ── 颜色 ────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -105,12 +105,12 @@ LATEST_TAG=$(echo "$RELEASE_JSON" | _parse_tag)
 DL_URL=$(echo "$RELEASE_JSON" | _parse_asset_url)
 
 [[ -z "$LATEST_TAG" ]] && error "无法解析版本号，请确认已在仓库中创建 Release"
-[[ -z "$DL_URL" ]]     && error "Release 中未找到 nginxflow-server 二进制，请先上传构建产物"
+[[ -z "$DL_URL" ]]     && error "Release 中未找到 nginxflow-server 二进制，请先上传构建产物（文件名须为 nginxflow-server）"
 
 info "最新版本: $LATEST_TAG"
 info "下载地址: $DL_URL"
 
-DL_TMP=$(mktemp /tmp/nginxflow-XXXXXX 2>/dev/null || echo "/root/nginxflow-server-dl")
+DL_TMP=$(mktemp /tmp/ankerye-btm-XXXXXX 2>/dev/null || echo "/root/ankerye-btm-server-dl")
 curl -fL --progress-bar -o "$DL_TMP" "$DL_URL" || error "下载失败"
 chmod +x "$DL_TMP"
 info "下载完成"
@@ -136,6 +136,7 @@ mkdir -p "$DATA_DIR" "$LOG_DIR"
 cp "$DL_TMP" "$INSTALL_DIR/nginxflow-server"
 rm -f "$DL_TMP"
 info "二进制已安装到 $INSTALL_DIR/nginxflow-server"
+chmod +x "$INSTALL_DIR/nginxflow-server"
 
 # ── 生成配置（首次安装才写，升级时保留原有配置）────────────────
 if [[ ! -f "$INSTALL_DIR/config.yaml" ]]; then
@@ -147,7 +148,7 @@ server:
   jwt_secret: "$JWT_SECRET"
 
 database:
-  path: $DATA_DIR/nginxflow.db
+  path: $DATA_DIR/ankerye-btm.db
 
 nginx:
   conf_dir: /etc/nginx/conf.d
@@ -167,7 +168,7 @@ else
     OLD_CONF=$(grep "conf_dir:" "$INSTALL_DIR/config.yaml" | awk '{print $2}')
 
     [[ -z "$OLD_PORT" ]] && OLD_PORT=$PORT
-    [[ -z "$OLD_DB"   ]] && OLD_DB="$DATA_DIR/nginxflow.db"
+    [[ -z "$OLD_DB"   ]] && OLD_DB="$DATA_DIR/ankerye-btm.db"
     [[ -z "$OLD_CONF" ]] && OLD_CONF="/etc/nginx/conf.d"
 
     cat > "$INSTALL_DIR/config.yaml" << CFEOF
@@ -191,8 +192,8 @@ fi
 
 # ── 配置 Nginx ──────────────────────────────────────────────
 step "配置 Nginx"
-if [[ ! -f /etc/nginx/nginx.conf.nginxflow-bak ]]; then
-  cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.nginxflow-bak
+if [[ ! -f /etc/nginx/nginx.conf.ankerye-btm-bak ]]; then
+  cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.ankerye-btm-bak
 fi
 cat > /etc/nginx/nginx.conf << 'NGINXEOF'
 load_module /usr/lib/nginx/modules/ngx_stream_module.so;
@@ -211,7 +212,7 @@ http {
     sendfile      on;
     keepalive_timeout 65;
     client_max_body_size 64m;
-    log_format nginxflow '$remote_addr - $remote_user [$time_local] "$request" '
+    log_format ankerye_btm '$remote_addr - $remote_user [$time_local] "$request" '
                          '$status $body_bytes_sent "$http_referer" "$http_user_agent" $upstream_addr';
     include /etc/nginx/conf.d/*-http.conf;
 }
@@ -230,7 +231,7 @@ info "Nginx 配置完成"
 
 # ── 注册系统服务 ─────────────────────────────────────────────
 step "注册系统服务"
-cat > /etc/systemd/system/nginxflow.service << SVCEOF
+cat > /etc/systemd/system/ankerye-btm.service << SVCEOF
 [Unit]
 Description=AnkerYe - 流量管理 Server
 After=network.target nginx.service

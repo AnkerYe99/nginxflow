@@ -18,10 +18,10 @@ import (
 
 const (
 	githubAPI   = "https://api.github.com"
-	githubRepo  = "AnkerYe99/nginxflow"
-	giteaRepo   = "anker/nginxflow"
+	githubRepo  = "AnkerYe99/AnkerYe-BTM"
+	giteaRepo   = "anker/AnkerYe-BTM"
 	binaryName  = "nginxflow-server"
-	installPath = "/opt/nginxflow/nginxflow-server"
+	installPath = "/opt/ankerye-btm/nginxflow-server"
 )
 
 var updateHTTPClient = &http.Client{Timeout: 30 * time.Second}
@@ -127,7 +127,7 @@ func ApplyUpdate(c *gin.Context) {
 	}
 
 	// 下载新二进制到临时路径
-	tmpPath := fmt.Sprintf("/tmp/nginxflow-update-%d", time.Now().Unix())
+	tmpPath := fmt.Sprintf("/tmp/ankerye-btm-update-%d", time.Now().Unix())
 	if err := downloadBinary(dl, tmpPath); err != nil {
 		util.Fail(c, 500, "下载失败: "+err.Error())
 		return
@@ -139,10 +139,10 @@ sleep 2
 cp "%s" "%s"
 chmod +x "%s"
 rm -f "%s" "$0"
-systemctl restart nginxflow
+systemctl restart ankerye-btm
 `, tmpPath, installPath, installPath, tmpPath)
 
-	scriptPath := "/tmp/nginxflow-do-update.sh"
+	scriptPath := "/tmp/ankerye-btm-do-update.sh"
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
 		os.Remove(tmpPath)
 		util.Fail(c, 500, "写入更新脚本失败: "+err.Error())
