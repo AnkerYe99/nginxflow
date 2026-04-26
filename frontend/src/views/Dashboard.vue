@@ -296,7 +296,7 @@ const sortedServerHealth = computed(() => {
 })
 
 // 节点表格数据
-const serverRows = computed(() => sortedServerHealth.value)
+const serverRows = computed(() => sortedServerHealth.value.slice(0, 10))
 
 // 每条规则的下线节点数
 const ruleDownMap = computed(() => {

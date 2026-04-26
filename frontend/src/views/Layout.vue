@@ -11,6 +11,7 @@
         <el-menu-item index="/dashboard"><el-icon><DataAnalysis/></el-icon><span>总览</span></el-menu-item>
         <el-menu-item index="/rules"><el-icon><Connection/></el-icon><span>转发规则</span></el-menu-item>
         <el-menu-item index="/servers"><el-icon><Monitor/></el-icon><span>节点监控</span></el-menu-item>
+        <el-menu-item index="/nodehealth"><el-icon><Odometer/></el-icon><span>节点健康</span></el-menu-item>
         <el-menu-item index="/certs"><el-icon><Lock/></el-icon><span>SSL证书</span></el-menu-item>
         <el-menu-item index="/traffic"><el-icon><TrendCharts/></el-icon><span>流量统计</span></el-menu-item>
         <el-menu-item index="/errorlogs"><el-icon><Warning/></el-icon><span>出错日志</span></el-menu-item>
