@@ -121,10 +121,12 @@ func ReloadNginx(c *gin.Context) {
 }
 
 type backupData struct {
-	Rules    []map[string]interface{} `json:"rules"`
-	Servers  []map[string]interface{} `json:"servers"`
-	Certs    []map[string]interface{} `json:"certs"`
-	Settings map[string]string        `json:"settings"`
+	Rules           []map[string]interface{} `json:"rules"`
+	Servers         []map[string]interface{} `json:"servers"`
+	Certs           []map[string]interface{} `json:"certs"`
+	Settings        map[string]string        `json:"settings"`
+	FilterBlacklist []map[string]interface{} `json:"filter_blacklist"`
+	FilterWhitelist []map[string]interface{} `json:"filter_whitelist"`
 }
 
 func Backup(c *gin.Context) {
@@ -184,6 +186,33 @@ func Backup(c *gin.Context) {
 		data.Settings[k] = v
 	}
 	rows4.Close()
+	// 黑名单
+	rows5, _ := db.DB.Query(`SELECT id,type,value,note,hits,auto_added,enabled FROM filter_blacklist ORDER BY id`)
+	if rows5 != nil {
+		for rows5.Next() {
+			var id, hits, autoAdded, enabled int64
+			var typ, value, note string
+			rows5.Scan(&id, &typ, &value, &note, &hits, &autoAdded, &enabled)
+			data.FilterBlacklist = append(data.FilterBlacklist, map[string]interface{}{
+				"id": id, "type": typ, "value": value, "note": note,
+				"hits": hits, "auto_added": autoAdded, "enabled": enabled,
+			})
+		}
+		rows5.Close()
+	}
+	// 白名单
+	rows6, _ := db.DB.Query(`SELECT id,type,value,note,enabled FROM filter_whitelist ORDER BY id`)
+	if rows6 != nil {
+		for rows6.Next() {
+			var id, enabled int64
+			var typ, value, note string
+			rows6.Scan(&id, &typ, &value, &note, &enabled)
+			data.FilterWhitelist = append(data.FilterWhitelist, map[string]interface{}{
+				"id": id, "type": typ, "value": value, "note": note, "enabled": enabled,
+			})
+		}
+		rows6.Close()
+	}
 
 	b, _ := json.Marshal(data)
 	encrypted, err := encryptBackup(b)
@@ -236,7 +265,7 @@ func Restore(c *gin.Context) {
 	defer tx.Rollback()
 
 	// 清空旧数据
-	for _, tbl := range []string{"upstream_servers", "rules", "ssl_certs", "system_settings"} {
+	for _, tbl := range []string{"upstream_servers", "rules", "ssl_certs", "system_settings", "filter_blacklist", "filter_whitelist"} {
 		tx.Exec("DELETE FROM " + tbl)
 	}
 
@@ -267,11 +296,24 @@ func Restore(c *gin.Context) {
 		tx.Exec(`INSERT OR REPLACE INTO system_settings(k,v) VALUES(?,?)`, k, v)
 	}
 
+	// 恢复黑名单
+	for _, m := range data.FilterBlacklist {
+		tx.Exec(`INSERT OR IGNORE INTO filter_blacklist(id,type,value,note,hits,auto_added,enabled) VALUES(?,?,?,?,?,?,?)`,
+			int64v(m["id"]), m["type"], m["value"], m["note"],
+			int64v(m["hits"]), int64v(m["auto_added"]), int64v(m["enabled"]))
+	}
+	// 恢复白名单
+	for _, m := range data.FilterWhitelist {
+		tx.Exec(`INSERT OR IGNORE INTO filter_whitelist(id,type,value,note,enabled) VALUES(?,?,?,?,?)`,
+			int64v(m["id"]), m["type"], m["value"], m["note"], int64v(m["enabled"]))
+	}
+
 	if err := tx.Commit(); err != nil {
 		util.Fail(c, 500, "恢复失败: "+err.Error())
 		return
 	}
 	go engine.ApplyAll()
+	go engine.ApplyFilter()
 	util.OK(c, nil)
 }
 

@@ -53,6 +53,7 @@ func main() {
 	go engine.StartSlaveSyncAgent()
 	go engine.StartSlaveRulesSyncAgent()
 	go engine.StartSlaveCertsSyncAgent()
+	go engine.StartSlaveFilterSyncAgent()
 
 	r := gin.Default()
 	r.Use(corsMiddleware())
@@ -142,6 +143,8 @@ func main() {
 		auth.DELETE("/sync/nodes/:id", handler.DeleteSyncNode)
 		auth.POST("/sync/trigger_rules", handler.TriggerRulesSync)
 		auth.POST("/sync/trigger_certs", handler.TriggerCertsSync)
+		auth.POST("/sync/trigger_filter", handler.TriggerFilterSync)
+		r.GET("/api/v1/sync/filter_export", handler.SyncFilterExport)
 	}
 
 	// 前端静态文件（SPA 模式，未匹配路由回退 index.html）

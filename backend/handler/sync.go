@@ -303,6 +303,57 @@ func TriggerCertsSync(c *gin.Context) {
 	util.OK(c, gin.H{"msg": "已触发证书同步"})
 }
 
+func TriggerFilterSync(c *gin.Context) {
+	engine.TriggerFilterSync()
+	util.OK(c, gin.H{"msg": "已触发黑名单同步"})
+}
+
+// SyncFilterExport 导出黑白名单（专用 sync_filter_token 鉴权）
+func SyncFilterExport(c *gin.Context) {
+	token := c.Query("token")
+	var expected string
+	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_filter_token'`).Scan(&expected)
+	if expected == "" || token != expected {
+		util.Fail(c, 403, "token 无效")
+		return
+	}
+
+	filterBL := []gin.H{}
+	blrows, _ := db.DB.Query(`SELECT type,value,note,hits,auto_added,enabled FROM filter_blacklist ORDER BY id`)
+	if blrows != nil {
+		for blrows.Next() {
+			var typ, value, note string
+			var hits, autoAdded, enabled int64
+			blrows.Scan(&typ, &value, &note, &hits, &autoAdded, &enabled)
+			filterBL = append(filterBL, gin.H{
+				"type": typ, "value": value, "note": note,
+				"hits": hits, "auto_added": autoAdded, "enabled": enabled,
+			})
+		}
+		blrows.Close()
+	}
+
+	filterWL := []gin.H{}
+	wlrows, _ := db.DB.Query(`SELECT type,value,note,enabled FROM filter_whitelist ORDER BY id`)
+	if wlrows != nil {
+		for wlrows.Next() {
+			var typ, value, note string
+			var enabled int64
+			wlrows.Scan(&typ, &value, &note, &enabled)
+			filterWL = append(filterWL, gin.H{
+				"type": typ, "value": value, "note": note, "enabled": enabled,
+			})
+		}
+		wlrows.Close()
+	}
+
+	util.OK(c, gin.H{
+		"generated_at":     time.Now().Format(time.RFC3339),
+		"filter_blacklist": filterBL,
+		"filter_whitelist": filterWL,
+	})
+}
+
 func ListSyncNodes(c *gin.Context) {
 	rows, _ := db.DB.Query(`SELECT id,name,address,IFNULL(last_sync_at,''),IFNULL(last_version,''),
 		status,IFNULL(last_err,''),created_at FROM sync_nodes ORDER BY id DESC`)

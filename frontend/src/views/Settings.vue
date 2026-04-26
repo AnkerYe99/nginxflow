@@ -262,6 +262,45 @@
               </div>
             </div>
           </el-card>
+
+          <!-- 黑名单同步 -->
+          <el-card shadow="never" class="section-card sync-card" style="margin-top:16px">
+            <template #header>
+              <span class="card-title">黑名单同步</span>
+            </template>
+            <div class="sync-card-body">
+              <div class="sub-section">
+                <div class="sub-section-title">作为主节点</div>
+                <el-form-item label="同步 Token" label-width="90px">
+                  <el-input v-model="form.sync_filter_token" type="password" show-password
+                    placeholder="设置后从节点可拉取本机黑白名单" />
+                  <el-button style="margin-top:8px;width:100%" @click="genFilterToken">生成 Token</el-button>
+                </el-form-item>
+              </div>
+              <div class="sub-section">
+                <div class="sub-section-title">作为从节点 <span class="sub-hint">（留空不启用）</span></div>
+                <el-form-item label="主节点地址" label-width="90px">
+                  <el-input v-model="form.slave_filter_url" placeholder="http://10.x.x.x:9000" />
+                </el-form-item>
+                <el-form-item label="主节点 Token" label-width="90px">
+                  <el-input v-model="form.slave_filter_token" type="password" show-password placeholder="未修改留空" />
+                </el-form-item>
+                <el-form-item label="同步时间" label-width="90px">
+                  <el-input v-model="form.slave_filter_time" placeholder="03:00" style="width:120px" />
+                  <span style="margin-left:8px;color:#909399;font-size:13px">每天定时（HH:MM）</span>
+                </el-form-item>
+              </div>
+              <el-button type="primary" plain :loading="triggeringFilter" @click="triggerFilter" style="width:100%">立即同步黑名单</el-button>
+              <div v-if="form.slave_filter_last_sync_at" class="sync-status" style="margin-top:10px">
+                <el-tag :type="form.slave_filter_last_status==='ok'?'success':'danger'" size="small">
+                  {{ form.slave_filter_last_status==='ok' ? '正常' : '异常' }}
+                </el-tag>
+                <span style="margin-left:8px;color:#909399;font-size:12px;word-break:break-all">
+                  {{ form.slave_filter_last_sync_at }}<br>{{ form.slave_filter_last_msg }}
+                </span>
+              </div>
+            </div>
+          </el-card>
         </div>
       </el-tab-pane>
 
@@ -377,6 +416,7 @@ const testingEmail = ref(false)
 const smtpProvider = ref('')
 const triggeringRules = ref(false)
 const triggeringCerts = ref(false)
+const triggeringFilter = ref(false)
 const checking = ref(false)
 const upgrading = ref(false)
 const updateChecked = ref(false)
@@ -529,6 +569,21 @@ function genRulesToken() {
 function genCertsToken() {
   form.value.sync_certs_token = randToken()
   ElMessage.success('证书同步 Token 已生成，请记得保存')
+}
+function genFilterToken() {
+  form.value.sync_filter_token = randToken()
+  ElMessage.success('黑名单同步 Token 已生成，请记得保存')
+}
+
+async function triggerFilter() {
+  if (!form.value.slave_filter_url) { ElMessage.warning('请先设置主节点地址'); return }
+  triggeringFilter.value = true
+  try {
+    await api.post('/sync/trigger_filter')
+    ElMessage.success('已触发黑名单同步，约3秒后刷新状态')
+    setTimeout(load, 4000)
+  } catch (e) { ElMessage.error('触发失败') }
+  triggeringFilter.value = false
 }
 
 async function checkUpdate() {

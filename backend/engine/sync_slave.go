@@ -18,6 +18,7 @@ import (
 // 强制触发同步通道（缓冲1，防止堆积）
 var rulesForceSync = make(chan struct{}, 1)
 var certsForceSync = make(chan struct{}, 1)
+var filterForceSync = make(chan struct{}, 1)
 
 // 带30s超时的HTTP客户端
 var syncHTTPClient = &http.Client{Timeout: 30 * time.Second}
@@ -89,12 +90,30 @@ type syncExportResp struct {
 	} `json:"data"`
 }
 
+type syncFilterItem struct {
+	Type      string `json:"type"`
+	Value     string `json:"value"`
+	Note      string `json:"note"`
+	Hits      int64  `json:"hits"`
+	AutoAdded int64  `json:"auto_added"`
+	Enabled   int64  `json:"enabled"`
+}
+
+type syncFilterWLItem struct {
+	Type    string `json:"type"`
+	Value   string `json:"value"`
+	Note    string `json:"note"`
+	Enabled int64  `json:"enabled"`
+}
+
 type syncRulesResp struct {
 	Code int `json:"code"`
 	Data struct {
-		Version      string            `json:"version"`
-		NginxConfigs map[string]string `json:"nginx_configs"`
-		Rules        []syncRule        `json:"rules"`
+		Version         string             `json:"version"`
+		NginxConfigs    map[string]string  `json:"nginx_configs"`
+		Rules           []syncRule         `json:"rules"`
+		FilterBlacklist []syncFilterItem   `json:"filter_blacklist"`
+		FilterWhitelist []syncFilterWLItem `json:"filter_whitelist"`
 	} `json:"data"`
 }
 
@@ -264,6 +283,22 @@ func pullAndApplyRules(masterURL, token string) error {
 			}
 		}
 		log.Printf("[slave-rules] 同步规则 %d 条", len(result.Data.Rules))
+	}
+
+	// 顺带同步黑白名单（主节点 v2.0.1+ 会在同一接口返回）
+	if len(result.Data.FilterBlacklist) > 0 || len(result.Data.FilterWhitelist) > 0 {
+		db.DB.Exec(`DELETE FROM filter_blacklist WHERE auto_added=0`)
+		for _, item := range result.Data.FilterBlacklist {
+			db.DB.Exec(`INSERT OR IGNORE INTO filter_blacklist(type,value,note,hits,auto_added,enabled) VALUES(?,?,?,?,?,?)`,
+				item.Type, item.Value, item.Note, item.Hits, item.AutoAdded, item.Enabled)
+		}
+		db.DB.Exec(`DELETE FROM filter_whitelist`)
+		for _, item := range result.Data.FilterWhitelist {
+			db.DB.Exec(`INSERT OR IGNORE INTO filter_whitelist(type,value,note,enabled) VALUES(?,?,?,?)`,
+				item.Type, item.Value, item.Note, item.Enabled)
+		}
+		go ApplyFilter()
+		log.Printf("[slave-rules] 顺带同步黑名单 %d 条，白名单 %d 条", len(result.Data.FilterBlacklist), len(result.Data.FilterWhitelist))
 	}
 
 	if err := Reload(); err != nil {
@@ -531,4 +566,115 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ── 黑白名单独立同步 agent ──────────────────────────────────────
+
+func TriggerFilterSync() {
+	select {
+	case filterForceSync <- struct{}{}:
+	default:
+	}
+}
+
+// nextOccurrence 计算下一次 "HH:MM" 出现的时间点（今天或明天）
+func nextOccurrence(hhmm string) time.Time {
+	now := time.Now()
+	var h, m int
+	fmt.Sscanf(hhmm, "%d:%d", &h, &m)
+	t := time.Date(now.Year(), now.Month(), now.Day(), h, m, 0, 0, now.Location())
+	if !t.After(now) {
+		t = t.Add(24 * time.Hour)
+	}
+	return t
+}
+
+func StartSlaveFilterSyncAgent() {
+	for {
+		masterURL := getSetting("slave_filter_url")
+		token := getSetting("slave_filter_token")
+		syncTime := getSetting("slave_filter_time")
+		if syncTime == "" {
+			syncTime = "03:00"
+		}
+
+		if masterURL == "" || token == "" {
+			time.Sleep(60 * time.Second)
+			continue
+		}
+
+		next := nextOccurrence(syncTime)
+		waitDur := time.Until(next)
+		log.Printf("[slave-filter] 下次同步时间: %s（等待 %.0f 分钟）", next.Format("2006-01-02 15:04"), waitDur.Minutes())
+
+		select {
+		case <-time.After(waitDur):
+		case <-filterForceSync:
+			log.Printf("[slave-filter] 手动触发同步")
+		}
+
+		// 重新读取配置（可能在等待期间被修改）
+		masterURL = getSetting("slave_filter_url")
+		token = getSetting("slave_filter_token")
+		if masterURL == "" || token == "" {
+			continue
+		}
+
+		if err := pullAndApplyFilter(masterURL, token); err != nil {
+			setSyncStatus("slave_filter", "error", err.Error())
+			log.Printf("[slave-filter] 同步失败: %v", err)
+		}
+	}
+}
+
+type syncFilterResp struct {
+	Code int `json:"code"`
+	Data struct {
+		GeneratedAt     string             `json:"generated_at"`
+		FilterBlacklist []syncFilterItem   `json:"filter_blacklist"`
+		FilterWhitelist []syncFilterWLItem `json:"filter_whitelist"`
+	} `json:"data"`
+}
+
+func pullAndApplyFilter(masterURL, token string) error {
+	url := fmt.Sprintf("%s/api/v1/sync/filter_export?token=%s", masterURL, token)
+	resp, err := syncHTTPClient.Get(url)
+	if err != nil {
+		return fmt.Errorf("请求主节点失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("主节点返回 %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result syncFilterResp
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
+	if result.Code != 0 {
+		return fmt.Errorf("主节点返回错误码 %d", result.Code)
+	}
+
+	// 仅替换手动添加的规则，保留本机自动封禁的 IP
+	db.DB.Exec(`DELETE FROM filter_blacklist WHERE auto_added=0`)
+	for _, item := range result.Data.FilterBlacklist {
+		db.DB.Exec(`INSERT OR IGNORE INTO filter_blacklist(type,value,note,hits,auto_added,enabled) VALUES(?,?,?,?,?,?)`,
+			item.Type, item.Value, item.Note, item.Hits, item.AutoAdded, item.Enabled)
+	}
+	db.DB.Exec(`DELETE FROM filter_whitelist`)
+	for _, item := range result.Data.FilterWhitelist {
+		db.DB.Exec(`INSERT OR IGNORE INTO filter_whitelist(type,value,note,enabled) VALUES(?,?,?,?)`,
+			item.Type, item.Value, item.Note, item.Enabled)
+	}
+
+	if err := ApplyFilter(); err != nil {
+		return fmt.Errorf("应用过滤规则失败: %v", err)
+	}
+
+	msg := fmt.Sprintf("同步成功，黑名单 %d 条，白名单 %d 条", len(result.Data.FilterBlacklist), len(result.Data.FilterWhitelist))
+	setSyncStatus("slave_filter", "ok", msg)
+	log.Printf("[slave-filter] %s", msg)
+	return nil
 }
