@@ -238,22 +238,21 @@ let timer = null
 
 async function load() {
   loading.value = true
-  try {
-    const [ov, sh, sy, ce, tr, tr24] = await Promise.all([
-      api.get('/stats/overview'),
-      api.get('/stats/server_health'),
-      api.get('/stats/system'),
-      api.get('/certs'),
-      api.get('/stats/traffic', { params: { period: 'today' } }),
-      api.get('/stats/traffic', { params: { period: '24h' } }),
-    ])
-    stats.value        = ov.data || {}
-    serverHealth.value = sh.data || []
-    sys.value          = sy.data || {}
-    certs.value        = ce.data || []
-    traffic.value      = tr.data || []
-    traffic24h.value   = tr24.data || []
-  } catch {}
+  const [ov, sh, sy, ce, tr, tr24] = await Promise.allSettled([
+    api.get('/stats/overview'),
+    api.get('/stats/server_health'),
+    api.get('/stats/system'),
+    api.get('/certs'),
+    api.get('/stats/traffic', { params: { period: 'today' } }),
+    api.get('/stats/traffic', { params: { period: '24h' } }),
+  ])
+  const val = r => r.status === 'fulfilled' ? r.value : null
+  if (val(ov))   stats.value        = val(ov).data  || {}
+  if (val(sh))   serverHealth.value = val(sh).data  || []
+  if (val(sy))   sys.value          = val(sy).data  || {}
+  if (val(ce))   certs.value        = val(ce).data  || []
+  if (val(tr))   traffic.value      = val(tr).data  || []
+  if (val(tr24)) traffic24h.value   = val(tr24).data || []
   loading.value = false
 }
 
