@@ -265,6 +265,62 @@ else
   error "服务启动失败，请查看: journalctl -u $SERVICE_NAME -n 30"
 fi
 
+# ── 修复已知问题 ─────────────────────────────────────────────
+step "修复存量配置"
+
+# 1. 旧版 nginx.conf 日志格式名 ankerye_btm → ankerye_flow
+if grep -q "ankerye_btm" /etc/nginx/nginx.conf 2>/dev/null; then
+  sed -i 's/ankerye_btm/ankerye_flow/g' /etc/nginx/nginx.conf
+  info "nginx.conf 日志格式名已修正为 ankerye_flow"
+fi
+
+# 2. 确保 nginx 日志目录存在
+mkdir -p "$LOG_DIR"
+if ls /etc/nginx/conf.d/*-http.conf &>/dev/null 2>&1; then
+  for f in /etc/nginx/conf.d/*-http.conf; do
+    dir=$(grep -oP 'access_log \K[^ ]+' "$f" 2>/dev/null | xargs dirname 2>/dev/null || true)
+    [[ -n "$dir" ]] && mkdir -p "$dir"
+  done
+fi
+
+# 3. 从 SQLite 将证书写入磁盘（避免 nginx 因缺文件 reload 失败）
+DB_PATH="$DATA_DIR/ankerye-btm.db"
+CERT_DIR="/etc/nginx/certs"
+if [[ -f "$DB_PATH" ]]; then
+  python3 - "$DB_PATH" "$CERT_DIR" <<'PYEOF'
+import sys, sqlite3, os
+db_path, cert_dir = sys.argv[1], sys.argv[2]
+try:
+    c = sqlite3.connect(db_path)
+    rows = c.execute("SELECT domain, cert_pem, key_pem FROM ssl_certs").fetchall()
+    written = 0
+    for domain, cert, key in rows:
+        if not (domain and cert and key):
+            continue
+        d = os.path.join(cert_dir, domain)
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, "fullchain.pem"), "w").write(cert)
+        kf = os.path.join(d, "privkey.pem")
+        open(kf, "w").write(key)
+        os.chmod(kf, 0o600)
+        written += 1
+    print(f"[证书] 写入 {written} 个域名证书到磁盘")
+except Exception as e:
+    print(f"[证书] 跳过（{e}）")
+PYEOF
+fi
+
+# 4. nginx 最终测试并 reload
+if nginx -t 2>/dev/null; then
+  if pgrep -x nginx &>/dev/null; then
+    nginx -s reload && info "Nginx reload 成功"
+  else
+    nginx && info "Nginx 启动成功"
+  fi
+else
+  warn "nginx -t 仍有错误，请手动检查: nginx -t"
+fi
+
 # ── 完成 ────────────────────────────────────────────────────
 IP=$(hostname -I | awk '{print $1}')
 echo ""
