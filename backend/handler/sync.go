@@ -133,11 +133,14 @@ func SyncExport(c *gin.Context) {
 	})
 }
 
-// SyncRulesExport 仅导出规则+节点（使用 sync_rules_token 鉴权）
+// SyncRulesExport 仅导出规则+节点（使用 sync_rules_token 鉴权，为空时回退 sync_token）
 func SyncRulesExport(c *gin.Context) {
 	token := c.Query("token")
 	var saved string
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_rules_token'`).Scan(&saved)
+	if saved == "" {
+		db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_token'`).Scan(&saved)
+	}
 	if saved == "" || token != saved {
 		util.Fail(c, 403, "token 无效")
 		return
@@ -236,11 +239,14 @@ func SyncRulesExport(c *gin.Context) {
 	})
 }
 
-// SyncCertsExport 仅导出证书（使用 sync_certs_token 鉴权）
+// SyncCertsExport 仅导出证书（使用 sync_certs_token 鉴权，为空时回退 sync_token）
 func SyncCertsExport(c *gin.Context) {
 	token := c.Query("token")
 	var saved string
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_certs_token'`).Scan(&saved)
+	if saved == "" {
+		db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_token'`).Scan(&saved)
+	}
 	if saved == "" || token != saved {
 		util.Fail(c, 403, "token 无效")
 		return
@@ -308,11 +314,14 @@ func TriggerFilterSync(c *gin.Context) {
 	util.OK(c, gin.H{"msg": "已触发黑名单同步"})
 }
 
-// SyncFilterExport 导出黑白名单（专用 sync_filter_token 鉴权）
+// SyncFilterExport 导出黑白名单（专用 sync_filter_token 鉴权，为空时回退 sync_token）
 func SyncFilterExport(c *gin.Context) {
 	token := c.Query("token")
 	var expected string
 	db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_filter_token'`).Scan(&expected)
+	if expected == "" {
+		db.DB.QueryRow(`SELECT v FROM system_settings WHERE k='sync_token'`).Scan(&expected)
+	}
 	if expected == "" || token != expected {
 		util.Fail(c, 403, "token 无效")
 		return
