@@ -14,7 +14,7 @@ import (
 // ── 黑名单 ──────────────────────────────────────────────────
 
 func ListBlacklist(c *gin.Context) {
-	rows, err := db.DB.Query(`SELECT id,type,value,note,hits,auto_added,enabled,created_at FROM filter_blacklist ORDER BY id`)
+	rows, err := db.DB.Query(`SELECT id,type,value,note,hits,auto_added,enabled,created_at FROM filter_blacklist ORDER BY id DESC`)
 	if err != nil {
 		util.Fail(c, 500, err.Error()); return
 	}
@@ -93,7 +93,7 @@ func DisableBlacklist(c *gin.Context) {
 // ── 白名单 ──────────────────────────────────────────────────
 
 func ListWhitelist(c *gin.Context) {
-	rows, err := db.DB.Query(`SELECT id,type,value,note,enabled,created_at FROM filter_whitelist ORDER BY id`)
+	rows, err := db.DB.Query(`SELECT id,type,value,note,enabled,created_at FROM filter_whitelist ORDER BY id DESC`)
 	if err != nil {
 		util.Fail(c, 500, err.Error()); return
 	}

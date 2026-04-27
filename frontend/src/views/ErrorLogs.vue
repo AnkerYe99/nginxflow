@@ -9,18 +9,11 @@
     <el-card shadow="never" class="filter-card">
       <!-- 第一行：日期/规则/状态码组/操作 -->
       <div class="filter-row">
-        <el-date-picker
-          v-model="filter.dateRange"
-          type="daterange"
-          range-separator="~"
-          start-placeholder="开始"
-          end-placeholder="结束"
-          format="YYYY-MM-DD"
-          value-format="YYYY-MM-DD"
-          :clearable="false"
-          style="width:195px"
-          @change="load"
-        />
+        <el-date-picker v-model="filter.startDate" type="date" placeholder="开始日期"
+          format="YYYY-MM-DD" value-format="YYYY-MM-DD" size="small" style="width:118px" @change="load" />
+        <span style="color:#909399;font-size:12px;padding:0 2px">~</span>
+        <el-date-picker v-model="filter.endDate" type="date" placeholder="结束日期"
+          format="YYYY-MM-DD" value-format="YYYY-MM-DD" size="small" style="width:118px" @change="load" />
 
         <el-select v-model="filter.ruleId" placeholder="全部规则" clearable style="width:180px" @change="load">
           <el-option v-for="r in rules" :key="r.id" :label="r.name" :value="r.id" />
@@ -65,8 +58,7 @@
     <!-- 表格 -->
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="pagedList" stripe size="small" style="width:100%" :row-class-name="rowClass">
-        <el-table-column label="时间" prop="time" width="165" fixed />
-        <el-table-column label="规则" prop="rule_name" width="130" show-overflow-tooltip />
+        <el-table-column label="规则" prop="rule_name" width="130" show-overflow-tooltip fixed />
         <el-table-column label="客户端 IP" prop="ip" width="145" />
         <el-table-column label="方法" prop="method" width="70">
           <template #default="{row}">
@@ -88,6 +80,7 @@
           <template #default="{row}">{{ fmtBytes(row.bytes) }}</template>
         </el-table-column>
         <el-table-column label="上游节点" prop="upstream" width="165" show-overflow-tooltip />
+        <el-table-column label="时间" prop="time" width="155" />
         <el-table-column label="User-Agent" prop="ua" min-width="180" show-overflow-tooltip />
       </el-table>
 
@@ -113,7 +106,7 @@ function fmtLocalDate(d) {
 function today() { return fmtLocalDate(new Date()) }
 function daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); return fmtLocalDate(d) }
 
-const filter = ref({ ruleId: null, code: 'all', dateRange: [daysAgo(6), today()] })
+const filter = ref({ ruleId: null, code: 'all', startDate: daysAgo(6), endDate: today() })
 const search = ref({ ip: '', method: '', status: '', upstream: '' })
 const rules = ref([])
 const list = ref([])
@@ -153,7 +146,8 @@ async function load() {
   loading.value = true
   page.value = 1
   try {
-    const [start, end] = filter.value.dateRange || [daysAgo(6), today()]
+    const start = filter.value.startDate || daysAgo(6)
+    const end = filter.value.endDate || today()
     const params = { code: filter.value.code, start, end }
     if (filter.value.ruleId) params.rule_id = filter.value.ruleId
     const res = await api.get('/stats/errors', { params })

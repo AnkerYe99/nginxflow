@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -180,15 +181,113 @@ func processAutoBlock(line string) {
 	if net.ParseIP(ip) == nil {
 		return
 	}
+	note := "自动封锁（" + parseTriggerReason(line) + "）"
 	res, err := db.DB.Exec(
 		`INSERT OR IGNORE INTO filter_blacklist(type,value,note,auto_added) VALUES(?,?,?,1)`,
-		"ip", ip, "自动封锁（触发过滤规则）",
+		"ip", ip, note,
 	)
 	if err != nil {
 		return
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
-		log.Printf("[filter] auto-blocked IP: %s", ip)
+		log.Printf("[filter] auto-blocked IP: %s | %s", ip, note)
 		go ApplyFilter()
 	}
+}
+
+// parseLogFields 从 nginx 日志行中解析 method、path、ua
+// 格式: IP - user [time] "METHOD PATH PROTO" status bytes "referer" "ua" upstream
+func parseLogFields(line string) (method, path, ua string) {
+	parts := strings.SplitN(line, `"`, -1)
+	if len(parts) >= 2 {
+		req := strings.Fields(parts[1])
+		if len(req) >= 1 {
+			method = req[0]
+		}
+		if len(req) >= 2 {
+			path = req[1]
+		}
+	}
+	if len(parts) >= 6 {
+		ua = parts[5]
+	}
+	return
+}
+
+// matchNginxPattern 匹配 nginx map 指令的模式（~* 不区分大小写正则，~ 正则，其余精确）
+func matchNginxPattern(pattern, value string) bool {
+	if strings.HasPrefix(pattern, "~*") {
+		re, err := regexp.Compile(`(?i)` + pattern[2:])
+		if err != nil {
+			return false
+		}
+		return re.MatchString(value)
+	}
+	if strings.HasPrefix(pattern, "~") {
+		re, err := regexp.Compile(pattern[1:])
+		if err != nil {
+			return false
+		}
+		return re.MatchString(value)
+	}
+	return strings.EqualFold(pattern, value)
+}
+
+// parseTriggerReason 查询黑名单规则，返回触发原因描述
+func parseTriggerReason(line string) string {
+	method, path, ua := parseLogFields(line)
+
+	// 检查 method
+	if method != "" {
+		rows, _ := db.DB.Query(`SELECT value FROM filter_blacklist WHERE type='method' AND enabled=1`)
+		if rows != nil {
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				if strings.EqualFold(v, method) {
+					rows.Close()
+					return fmt.Sprintf("触发：method %s", method)
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	// 检查 path
+	if path != "" {
+		rows, _ := db.DB.Query(`SELECT value FROM filter_blacklist WHERE type='path' AND enabled=1`)
+		if rows != nil {
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				if matchNginxPattern(v, path) {
+					rows.Close()
+					return fmt.Sprintf("触发：path %s", v)
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	// 检查 ua
+	if ua != "" {
+		rows, _ := db.DB.Query(`SELECT value FROM filter_blacklist WHERE type='ua' AND enabled=1`)
+		if rows != nil {
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				if matchNginxPattern(v, ua) {
+					rows.Close()
+					return fmt.Sprintf("触发：ua %s", v)
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	// fallback：显示请求信息
+	if method != "" && path != "" {
+		return fmt.Sprintf("触发过滤规则 [%s %s]", method, path)
+	}
+	return "触发过滤规则"
 }

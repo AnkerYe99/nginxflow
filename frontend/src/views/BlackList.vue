@@ -12,10 +12,11 @@
     <!-- 搜索栏 -->
     <el-card shadow="never" style="margin-bottom:12px">
       <div class="search-row">
-        <el-date-picker v-model="q.dateRange" type="daterange" range-separator="~"
-          start-placeholder="开始" end-placeholder="结束"
-          format="YYYY-MM-DD" value-format="YYYY-MM-DD" :clearable="true"
-          style="width:195px" size="small" />
+        <el-date-picker v-model="q.startDate" type="date" placeholder="开始日期"
+          format="YYYY-MM-DD" value-format="YYYY-MM-DD" clearable size="small" style="width:118px" />
+        <span style="color:#909399;font-size:12px;padding:0 2px">~</span>
+        <el-date-picker v-model="q.endDate" type="date" placeholder="结束日期"
+          format="YYYY-MM-DD" value-format="YYYY-MM-DD" clearable size="small" style="width:118px" />
         <el-select v-model="q.type" placeholder="类型" clearable style="width:100px" size="small">
           <el-option label="IP" value="ip" />
           <el-option label="CIDR" value="cidr" />
@@ -128,7 +129,7 @@ const blDialog = ref(false)
 const saving = ref(false)
 const form = ref({ type: 'ip', value: '', note: '' })
 
-const emptyQ = () => ({ dateRange: [daysAgo(6), today()], type: '', value: '', note: '', source: '', status: '', hitsOnly: false })
+const emptyQ = () => ({ startDate: daysAgo(6), endDate: today(), type: '', value: '', note: '', source: '', status: '', hitsOnly: false })
 const q = ref(emptyQ())
 const activeQ = ref(emptyQ())
 const page = ref(1)
@@ -140,10 +141,14 @@ const placeholder = computed(() => {
 
 const filtered = computed(() => {
   let r = list.value
-  const { dateRange, type, value, note, source, status, hitsOnly } = activeQ.value
-  if (dateRange && dateRange[0]) {
-    const [s, e] = dateRange
-    r = r.filter(x => { const d = (x.created_at || '').slice(0, 10); return d >= s && d <= e })
+  const { startDate, endDate, type, value, note, source, status, hitsOnly } = activeQ.value
+  if (startDate || endDate) {
+    r = r.filter(x => {
+      const d = (x.created_at || '').slice(0, 10)
+      if (startDate && d < startDate) return false
+      if (endDate && d > endDate) return false
+      return true
+    })
   }
   if (type) r = r.filter(x => x.type === type)
   if (value) r = r.filter(x => (x.value || '').toLowerCase().includes(value.toLowerCase()))

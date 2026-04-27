@@ -312,6 +312,15 @@ func Restore(c *gin.Context) {
 		util.Fail(c, 500, "恢复失败: "+err.Error())
 		return
 	}
+	// 将证书文件写入磁盘（备份恢复时 DB 有内容但磁盘无文件）
+	for _, m := range data.Certs {
+		domain, _ := m["domain"].(string)
+		certPEM, _ := m["cert_pem"].(string)
+		keyPEM, _ := m["key_pem"].(string)
+		if domain != "" && certPEM != "" && keyPEM != "" {
+			engine.WriteCert(domain, certPEM, keyPEM)
+		}
+	}
 	go engine.ApplyAll()
 	go engine.ApplyFilter()
 	util.OK(c, nil)
