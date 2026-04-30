@@ -85,10 +85,14 @@ func Overview(c *gin.Context) {
 }
 
 func Health(c *gin.Context) {
-	rows, _ := db.DB.Query(`SELECT s.id,s.rule_id,r.name,s.address,s.port,s.weight,s.state,
+	rows, err := db.DB.Query(`SELECT s.id,s.rule_id,r.name,s.address,s.port,s.weight,s.state,
 		IFNULL(s.last_check_at,''),IFNULL(s.last_err,'')
 		FROM upstream_servers s LEFT JOIN rules r ON s.rule_id=r.id
 		ORDER BY s.rule_id, s.id`)
+	if err != nil {
+		util.Fail(c, 500, err.Error())
+		return
+	}
 	defer rows.Close()
 	list := []gin.H{}
 	for rows.Next() {

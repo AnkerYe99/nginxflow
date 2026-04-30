@@ -65,7 +65,11 @@ func decryptBackup(data []byte) ([]byte, error) {
 }
 
 func GetSettings(c *gin.Context) {
-	rows, _ := db.DB.Query(`SELECT k,v FROM system_settings`)
+	rows, err := db.DB.Query(`SELECT k,v FROM system_settings`)
+	if err != nil {
+		util.Fail(c, 500, err.Error())
+		return
+	}
 	defer rows.Close()
 	m := map[string]string{}
 	for rows.Next() {

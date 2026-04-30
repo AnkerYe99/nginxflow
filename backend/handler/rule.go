@@ -267,11 +267,8 @@ func DisableRule(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	db.DB.Exec(`UPDATE rules SET status=0 WHERE id=?`, id)
 	health.StopRule(id)
-	r, _ := engine.LoadRule(id)
-	if r != nil {
-		engine.DeleteRule(id)
-	}
-	engine.Reload()
+	// DeleteRule 内部已含 smartReload，无需再调 Reload
+	engine.DeleteRule(id)
 	util.OK(c, nil)
 }
 
@@ -412,9 +409,9 @@ func checkConflict(req *ruleReq, excludeID int64) error {
 			}
 		}
 	} else {
-		// TCP/UDP: port must be globally unique per stack
+		// TCP/UDP: same port+stack combination must be unique
 		rows, err := db.DB.Query(`SELECT id, IFNULL(listen_stack,'both') FROM rules
-			WHERE protocol=? AND id!=?`, req.Protocol, excludeID)
+			WHERE protocol=? AND listen_port=? AND id!=?`, req.Protocol, req.ListenPort, excludeID)
 		if err != nil {
 			return err
 		}
