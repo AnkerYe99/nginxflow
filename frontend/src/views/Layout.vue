@@ -136,8 +136,18 @@ function startIdleCheck() {
   }, 60 * 1000)
 }
 
+async function loadPageTitle() {
+  try {
+    const data = (await api.get('/settings')).data
+    const title = data.site_title || 'AnkerYe-BTM'
+    document.title = title
+  } catch {
+    document.title = 'AnkerYe-BTM'
+  }
+}
+
 onMounted(() => {
-  document.title = 'AnkerYe-BTM'
+  loadPageTitle()
   checkMobile()
   window.addEventListener('resize', checkMobile)
   window.addEventListener('mousemove', onActivity)
