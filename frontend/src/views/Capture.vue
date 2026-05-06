@@ -34,7 +34,7 @@
 
     <el-card shadow="never" class="table-card" v-loading="loading">
       <div style="overflow-x:auto">
-        <el-table :data="filteredList" stripe size="small" style="width:100%" table-layout="auto" @row-click="openDetail">
+        <el-table :data="pagedList" stripe size="small" style="width:100%" table-layout="auto" @row-click="openDetail">
           <el-table-column label="时间" min-width="170">
             <template #default="{row}">
               <span style="font-size:12px;color:#606266">{{ fmtTime(row.time) }}</span>
@@ -82,6 +82,7 @@
           </el-table-column>
         </el-table>
       </div>
+      <Pagination :total="filteredList.length" :page-size="PAGE_SIZE" v-model:current="page" />
     </el-card>
 
     <!-- 详情弹窗 -->
@@ -113,10 +114,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import api from '../api'
+import Pagination from '../components/Pagination.vue'
+
+const PAGE_SIZE = 30
 
 const ruleId = ref(null)
 const rules = ref([])
@@ -126,6 +130,7 @@ const search = ref({ method: '', status: '', kw: '' })
 const data = ref({ capture_enabled: null, list: [], hint: '' })
 const detailShow = ref(false)
 const current = ref(null)
+const page = ref(1)
 
 const methodOptions = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
 
@@ -142,6 +147,10 @@ const filteredList = computed(() => {
   }
   return list
 })
+
+const pagedList = computed(() => filteredList.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
+
+watch([search, ruleId], () => { page.value = 1 }, { deep: true })
 
 const prettyBody = computed(() => {
   if (!current.value || !current.value.body) return '(空)'
