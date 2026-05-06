@@ -8,37 +8,40 @@
       </div>
     </div>
     <el-card>
-      <el-table :data="pagedList" size="small">
-        <el-table-column prop="domain" label="域名" />
-        <el-table-column prop="expire_at" label="到期时间" width="180" />
-        <el-table-column label="剩余天数" width="100">
-          <template #default="{row}">
-            <el-tag :type="daysLeft(row.expire_at) < 10 ? 'danger' : 'success'">
-              {{ daysLeft(row.expire_at) }} 天
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="自动续签" width="100">
-          <template #default="{row}">
-            <el-switch :model-value="row.auto_renew===1" @change="toggleRenew(row,$event)" />
-          </template>
-        </el-table-column>
-        <el-table-column label="续签状态" width="120">
-          <template #default="{row}">
-            <el-tag :type="statusTagType(row.renew_status)" size="small">
-              {{ statusLabel(row.renew_status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_renew_at" label="最后续签" width="180" />
-        <el-table-column label="操作" width="220">
-          <template #default="{row}">
-            <el-button size="small" @click="renew(row)">续签</el-button>
-            <el-button size="small" type="info" @click="openLog(row)">查看日志</el-button>
-            <el-button size="small" type="danger" @click="del(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div style="overflow-x:auto">
+        <el-table :data="pagedList" size="small" table-layout="auto">
+          <el-table-column prop="domain" label="域名" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="expire_at" label="到期时间" min-width="156" />
+          <el-table-column label="剩余天数" min-width="92" align="center">
+            <template #default="{row}">
+              <el-tag :type="daysLeft(row.expire_at) < 10 ? 'danger' : 'success'" size="small">
+                {{ daysLeft(row.expire_at) }} 天
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="自动续签" min-width="84" align="center">
+            <template #default="{row}">
+              <el-switch :model-value="row.auto_renew===1" @change="toggleRenew(row,$event)" />
+            </template>
+          </el-table-column>
+          <el-table-column label="续签状态" min-width="96" align="center">
+            <template #default="{row}">
+              <el-tag :type="statusTagType(row.renew_status)" size="small">
+                {{ statusLabel(row.renew_status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="last_renew_at" label="最后续签" min-width="156" />
+          <el-table-column label="操作" min-width="240" fixed="right">
+            <template #default="{row}">
+              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button size="small" type="primary" @click="renew(row)">续签</el-button>
+              <el-button size="small" type="info" @click="openLog(row)">日志</el-button>
+              <el-button size="small" type="danger" @click="del(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
       <Pagination :total="list.length" :page-size="PAGE_SIZE" v-model:current="page" />
     </el-card>
 
@@ -98,6 +101,29 @@
       <template #footer>
         <el-button @click="uploadShow=false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="upload">上传并验证</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑证书对话框 -->
+    <el-dialog v-model="editShow" :title="`编辑证书 — ${editForm.domain || ''}`" width="760px" :close-on-click-modal="false">
+      <el-alert type="warning" :closable="false" style="margin-bottom:16px">
+        直接编辑证书与私钥内容，保存后将重新解析域名 / 到期时间，并写入 nginx 证书目录。
+      </el-alert>
+      <el-form :model="editForm" label-width="120px" v-loading="editLoading">
+        <el-form-item label="证书 (PEM)" required>
+          <el-input v-model="editForm.cert_pem" type="textarea" :rows="9"
+            placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+            style="font-family:'JetBrains Mono','Consolas',monospace;font-size:12px" />
+        </el-form-item>
+        <el-form-item label="私钥 (PEM)" required>
+          <el-input v-model="editForm.key_pem" type="textarea" :rows="9"
+            placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+            style="font-family:'JetBrains Mono','Consolas',monospace;font-size:12px" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editShow=false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -207,6 +233,39 @@ function onFileChange(type, e) {
 }
 
 async function load() { list.value = (await api.get('/certs')).data }
+
+// 编辑证书
+const editShow = ref(false)
+const editLoading = ref(false)
+const editSaving = ref(false)
+const editForm = ref({ id: 0, domain: '', cert_pem: '', key_pem: '' })
+
+async function openEdit(row) {
+  editForm.value = { id: row.id, domain: row.domain, cert_pem: '', key_pem: '' }
+  editShow.value = true
+  editLoading.value = true
+  try {
+    const res = await api.get(`/certs/${row.id}`)
+    editForm.value.cert_pem = res.data.cert_pem || ''
+    editForm.value.key_pem = res.data.key_pem || ''
+  } catch {}
+  editLoading.value = false
+}
+
+async function saveEdit() {
+  if (!editForm.value.cert_pem || !editForm.value.key_pem) return ElMessage.warning('证书和私钥不能为空')
+  editSaving.value = true
+  try {
+    const res = await api.put(`/certs/${editForm.value.id}`, {
+      cert_pem: editForm.value.cert_pem,
+      key_pem: editForm.value.key_pem,
+    })
+    ElMessage.success(`保存成功，到期：${res.data.expire_at}`)
+    editShow.value = false
+    load()
+  } catch {}
+  editSaving.value = false
+}
 
 function daysLeft(expire) {
   return Math.ceil((new Date(expire) - new Date()) / 86400000)

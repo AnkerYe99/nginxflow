@@ -117,9 +117,18 @@ func ListWhitelist(c *gin.Context) {
 		var id, enabled int64
 		var typ, value, note, createdAt string
 		rows.Scan(&id, &typ, &value, &note, &enabled, &createdAt)
+		location := ""
+		if typ == "ip" {
+			location = util.LookupIP(value)
+		} else if typ == "cidr" {
+			if ip, _, err := net.ParseCIDR(value); err == nil {
+				location = util.LookupIP(ip.String())
+			}
+		}
 		list = append(list, gin.H{
 			"id": id, "type": typ, "value": value, "note": note,
 			"enabled": enabled, "created_at": createdAt,
+			"location": location,
 		})
 	}
 	util.OK(c, list)

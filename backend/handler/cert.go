@@ -122,6 +122,61 @@ func UploadCert(c *gin.Context) {
 	util.OK(c, gin.H{"id": id, "domain": domain, "expire_at": expireAt})
 }
 
+// EditCert 手动编辑已有证书内容（cert_pem + key_pem），自动重新解析 domain/expire_at。
+func EditCert(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req struct {
+		CertPEM string `json:"cert_pem" binding:"required"`
+		KeyPEM  string `json:"key_pem"  binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		util.Fail(c, 400, "参数错误")
+		return
+	}
+	if _, err := tls.X509KeyPair([]byte(req.CertPEM), []byte(req.KeyPEM)); err != nil {
+		util.Fail(c, 400, "证书与私钥不匹配: "+err.Error())
+		return
+	}
+	block, _ := pem.Decode([]byte(req.CertPEM))
+	if block == nil {
+		util.Fail(c, 400, "证书 PEM 解析失败")
+		return
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		util.Fail(c, 400, "证书解析失败: "+err.Error())
+		return
+	}
+	expireAt := cert.NotAfter.Format("2006-01-02 15:04:05")
+	domain := cert.Subject.CommonName
+	if len(cert.DNSNames) > 0 {
+		domain = cert.DNSNames[0]
+	}
+	if domain == "" {
+		util.Fail(c, 400, "无法从证书中提取域名")
+		return
+	}
+	// 旧 domain 用于删除可能更名后的旧文件
+	var oldDomain string
+	db.DB.QueryRow(`SELECT domain FROM ssl_certs WHERE id=?`, id).Scan(&oldDomain)
+	if oldDomain == "" {
+		util.Fail(c, 404, "证书不存在")
+		return
+	}
+	_, err = db.DB.Exec(`UPDATE ssl_certs SET domain=?, cert_pem=?, key_pem=?, expire_at=?,
+		updated_at=datetime('now','localtime') WHERE id=?`,
+		domain, req.CertPEM, req.KeyPEM, expireAt, id)
+	if err != nil {
+		util.Fail(c, 500, err.Error())
+		return
+	}
+	if err := engine.WriteCert(domain, req.CertPEM, req.KeyPEM); err != nil {
+		util.Fail(c, 500, "写证书文件失败: "+err.Error())
+		return
+	}
+	util.OK(c, gin.H{"id": id, "domain": domain, "expire_at": expireAt})
+}
+
 func DeleteCert(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	// 检查是否被规则占用

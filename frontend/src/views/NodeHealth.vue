@@ -12,8 +12,9 @@
     </div>
 
     <el-card shadow="never" v-loading="loading">
+      <div style="overflow-x:auto">
       <el-table :data="pagedRows" size="small" :span-method="spanMethod"
-        :row-class-name="rowClassName" border style="width:100%">
+        :row-class-name="rowClassName" border style="width:100%" table-layout="auto">
         <el-table-column label="规则名" prop="rule_name" min-width="120">
           <template #default="{row}">
             <div class="rule-cell">
@@ -31,44 +32,44 @@
             <span class="weight-badge">w{{ row.weight }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="78" align="center">
+        <el-table-column label="状态" min-width="74" align="center">
           <template #default="{row}">
             <el-tag v-if="row.state==='up'" type="success" size="small" effect="dark">正常</el-tag>
             <el-tag v-else-if="row.state==='down'" type="danger" size="small" effect="dark">异常</el-tag>
             <el-tag v-else type="info" size="small">禁用</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="今天访问" width="90" align="right">
+        <el-table-column label="今天访问" min-width="86" align="right">
           <template #default="{row}">
             <span :class="row.today_req?'num-active':'num-zero'">{{ fmtNum(row.today_req) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="今天流量" width="100" align="right">
+        <el-table-column label="今天流量" min-width="96" align="right">
           <template #default="{row}">
             <span :class="row.today_bytes?'num-active':'num-zero'">{{ fmtBytes(row.today_bytes) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="7天访问" width="90" align="right">
+        <el-table-column label="7天访问" min-width="86" align="right">
           <template #default="{row}">
             <span :class="row.d7_req?'num-active':'num-zero'">{{ fmtNum(row.d7_req) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="7天流量" width="100" align="right">
+        <el-table-column label="7天流量" min-width="96" align="right">
           <template #default="{row}">
             <span :class="row.d7_bytes?'num-active':'num-zero'">{{ fmtBytes(row.d7_bytes) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="30天访问" width="90" align="right">
+        <el-table-column label="30天访问" min-width="86" align="right">
           <template #default="{row}">
             <span :class="row.d30_req?'num-active':'num-zero'">{{ fmtNum(row.d30_req) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="30天流量" width="100" align="right">
+        <el-table-column label="30天流量" min-width="96" align="right">
           <template #default="{row}">
             <span :class="row.d30_bytes?'num-active':'num-zero'">{{ fmtBytes(row.d30_bytes) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="最后检测" width="150" align="center">
+        <el-table-column label="最后检测" min-width="148" align="center">
           <template #default="{row}">
             <span style="color:#909399;font-size:12px">{{ row.last_check_at || '—' }}</span>
           </template>
@@ -79,6 +80,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div v-if="!loading && sortedServerHealth.length===0" class="empty-tip">暂无节点数据</div>
       <Pagination :total="sortedServerHealth.length" :page-size="PAGE_SIZE" v-model:current="page" />

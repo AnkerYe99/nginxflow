@@ -107,6 +107,7 @@ func main() {
 		auth.POST("/certs", handler.UploadCert)
 		auth.POST("/certs/apply", handler.ApplyCert)
 		auth.GET("/certs/:id", handler.GetCert)
+		auth.PUT("/certs/:id", handler.EditCert)
 		auth.DELETE("/certs/:id", handler.DeleteCert)
 		auth.PUT("/certs/:id/auto_renew", handler.ToggleAutoRenew)
 		auth.POST("/certs/:id/renew", handler.ManualRenew)

@@ -24,27 +24,33 @@
 
     <!-- 表格 -->
     <el-card shadow="never" v-loading="loading">
-      <el-table :data="pagedList" stripe size="small" style="width:100%">
-        <el-table-column label="类型" width="72">
+      <div style="overflow-x:auto">
+      <el-table :data="pagedList" stripe size="small" style="width:100%" table-layout="auto">
+        <el-table-column label="类型" min-width="64">
           <template #default="{row}">
             <el-tag type="success" size="small">{{ row.type }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="值" prop="value" min-width="160" show-overflow-tooltip />
-        <el-table-column label="备注" prop="note" min-width="120" show-overflow-tooltip />
-        <el-table-column label="状态" width="66" align="center">
+        <el-table-column label="值 / 归属地" min-width="220" show-overflow-tooltip>
+          <template #default="{row}">
+            <span>{{ row.value }}</span>
+            <span v-if="row.location" style="color:#909399;font-size:11px;margin-left:4px">/{{ row.location }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" prop="note" min-width="130" show-overflow-tooltip />
+        <el-table-column label="状态" min-width="64" align="center">
           <template #default="{row}">
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
               {{ row.enabled ? '启用' : '停用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="加入时间" width="152">
+        <el-table-column label="加入时间" min-width="138">
           <template #default="{row}">
             <span style="color:#909399;font-size:12px">{{ fmtDate(row.created_at) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" min-width="120" fixed="right">
           <template #default="{row}">
             <el-button v-if="!row.enabled" size="small" type="success" text @click="doEnable(row)">启用</el-button>
             <el-button v-else size="small" type="warning" text @click="doDisable(row)">停用</el-button>
@@ -52,6 +58,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <Pagination :total="filtered.length" :page-size="PAGE_SIZE" v-model:current="page" />
     </el-card>
 

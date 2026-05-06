@@ -47,45 +47,46 @@
 
     <!-- 明细表格 -->
     <el-card>
-      <el-table :data="pagedList" size="small" v-loading="loading">
-        <el-table-column label="站点" min-width="160">
+      <div style="overflow-x:auto">
+      <el-table :data="pagedList" size="small" v-loading="loading" table-layout="auto">
+        <el-table-column label="站点" min-width="160" show-overflow-tooltip>
           <template #default="{row}">
             <el-tag size="small" :type="protoTagType(row.protocol)" style="margin-right:6px">{{ row.protocol.toUpperCase() }}</el-tag>
             {{ row.name }}
           </template>
         </el-table-column>
-        <el-table-column label="总请求" width="110" align="right">
+        <el-table-column label="总请求" min-width="100" align="right">
           <template #default="{row}">{{ fmtNum(row.requests) }}</template>
         </el-table-column>
-        <el-table-column label="出站流量" width="130" align="right">
+        <el-table-column label="出站流量" min-width="120" align="right">
           <template #default="{row}">{{ fmtBytes(row.bytes_out) }}</template>
         </el-table-column>
-        <el-table-column label="1xx" width="75" align="right">
+        <el-table-column label="1xx" min-width="72" align="right">
           <template #default="{row}">
             <span :style="{color: row.s1xx ? '#909399' : '#ccc'}">{{ fmtNum(row.s1xx) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="2xx" width="90" align="right">
+        <el-table-column label="2xx" min-width="84" align="right">
           <template #default="{row}">
             <span :style="{color: row.s2xx ? '#67c23a' : '#ccc'}">{{ fmtNum(row.s2xx) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="3xx" width="90" align="right">
+        <el-table-column label="3xx" min-width="84" align="right">
           <template #default="{row}">
             <span :style="{color: row.s3xx ? '#409eff' : '#ccc'}">{{ fmtNum(row.s3xx) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="4xx" width="90" align="right">
+        <el-table-column label="4xx" min-width="84" align="right">
           <template #default="{row}">
             <span :style="{color: row.s4xx ? '#e6a23c' : '#ccc'}">{{ fmtNum(row.s4xx) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="5xx" width="90" align="right">
+        <el-table-column label="5xx" min-width="84" align="right">
           <template #default="{row}">
             <span :style="{color: row.s5xx ? '#f56c6c' : '#ccc'}">{{ fmtNum(row.s5xx) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="成功率" width="100" align="right">
+        <el-table-column label="成功率" min-width="92" align="right">
           <template #default="{row}">
             <span v-if="row.requests" :style="{color: rowSuccessRate(row) < 90 ? '#f56c6c' : '#67c23a'}">
               {{ rowSuccessRate(row) }}%
@@ -94,6 +95,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <div v-if="!loading && list.every(r=>r.requests===0)" style="text-align:center;color:#909399;padding:32px 0;font-size:13px">
         暂无数据，统计每分钟自动采集一次
       </div>

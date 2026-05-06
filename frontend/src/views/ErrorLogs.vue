@@ -57,7 +57,8 @@
 
     <!-- 表格 -->
     <el-card shadow="never" class="table-card" v-loading="loading">
-      <el-table :data="pagedList" stripe size="small" style="width:100%" :row-class-name="rowClass" table-layout="fixed">
+      <div style="overflow-x:auto">
+      <el-table :data="pagedList" stripe size="small" style="width:100%" :row-class-name="rowClass" table-layout="auto">
         <el-table-column label="规则" prop="rule_name" min-width="100" show-overflow-tooltip fixed />
         <el-table-column label="客户端 IP / 归属地" min-width="190">
           <template #default="{row}">
@@ -84,6 +85,7 @@
         <el-table-column label="时间" prop="time" width="152" />
         <el-table-column label="User-Agent" prop="ua" min-width="200" show-overflow-tooltip />
       </el-table>
+      </div>
 
       <div v-if="!loading && filteredList.length === 0" class="empty-hint">
         <el-empty :description="list.length === 0 ? '所选日期范围内暂无出错记录' : '无匹配记录'" />

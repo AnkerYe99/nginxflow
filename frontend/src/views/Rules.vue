@@ -9,15 +9,15 @@
     </div>
     <el-card>
       <div style="overflow-x:auto">
-        <el-table :data="pagedList" size="small" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="name" label="名称" min-width="120" />
-          <el-table-column label="类型" width="70">
+        <el-table :data="pagedList" size="small" v-loading="loading" table-layout="auto">
+          <el-table-column prop="id" label="ID" min-width="60" />
+          <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
+          <el-table-column label="类型" min-width="70">
             <template #default="{row}">
               <el-tag :type="protoTagType(row.protocol)" size="small">{{ protoLabel(row.protocol) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="端口" width="180">
+          <el-table-column label="端口" min-width="160">
             <template #default="{row}">
               <span v-if="row.protocol==='http'">
                 <el-tag v-if="row.listen_port>0" size="small" type="info">HTTP:{{ row.listen_port }}</el-tag>
@@ -33,14 +33,14 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="server_name" label="域名" min-width="140" />
+          <el-table-column prop="server_name" label="域名" min-width="140" show-overflow-tooltip />
           <el-table-column prop="addresses" label="后端地址" min-width="160" show-overflow-tooltip />
-          <el-table-column label="均衡算法" width="100">
+          <el-table-column label="均衡算法" min-width="92">
             <template #default="{row}">
               {{ lbLabel(row.lb_method) }}
             </template>
           </el-table-column>
-          <el-table-column label="节点" width="90">
+          <el-table-column label="节点" min-width="92" align="center">
             <template #default="{row}">
               <el-tooltip :content="`${row.up_count} 个在线 / 共 ${row.server_count} 个`" placement="top">
                 <el-tag :type="row.up_count===0?'danger': row.up_count<row.server_count?'warning':'success'" size="small">
@@ -49,13 +49,13 @@
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="80">
+          <el-table-column label="状态" min-width="68" align="center">
             <template #default="{row}">
               <el-tag v-if="row.status===1" type="success" size="small">启用</el-tag>
               <el-tag v-else type="info" size="small">禁用</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="210">
+          <el-table-column label="操作" min-width="200" fixed="right">
             <template #default="{row}">
               <el-button size="small" @click="$router.push(`/rules/${row.id}/edit`)">编辑</el-button>
               <el-button v-if="row.status===1" size="small" @click="toggle(row,0)">禁用</el-button>
