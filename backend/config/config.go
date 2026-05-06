@@ -31,6 +31,7 @@ type Config struct {
 		RenewBeforeDays int `yaml:"renew_before_days"`
 		CheckHour       int `yaml:"check_hour"`
 	} `yaml:"cert"`
+	GeoIPDB string `yaml:"geoip_db"`
 }
 
 var Global Config
@@ -82,6 +83,9 @@ func Load(path string) error {
 	}
 	if Global.Cert.CheckHour == 0 {
 		Global.Cert.CheckHour = 2
+	}
+	if Global.GeoIPDB == "" {
+		Global.GeoIPDB = "/opt/AnkerYe-BTM/data/GeoLite2-City.mmdb"
 	}
 	return nil
 }

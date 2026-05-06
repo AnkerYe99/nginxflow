@@ -20,6 +20,7 @@ import (
 	"ankerye-flow/handler"
 	"ankerye-flow/health"
 	"ankerye-flow/middleware"
+	"ankerye-flow/util"
 )
 
 //go:embed all:frontend/dist
@@ -41,6 +42,8 @@ func main() {
 	if err := handler.EnsureAdmin(); err != nil {
 		log.Printf("EnsureAdmin: %v", err)
 	}
+
+	util.InitGeo(config.Global.GeoIPDB)
 
 	engine.EnsureFilterConf()
 	if err := engine.ApplyAll(); err != nil {

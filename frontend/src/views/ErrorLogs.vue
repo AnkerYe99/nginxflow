@@ -59,7 +59,12 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="pagedList" stripe size="small" style="width:100%" :row-class-name="rowClass">
         <el-table-column label="规则" prop="rule_name" width="130" show-overflow-tooltip fixed />
-        <el-table-column label="客户端 IP" prop="ip" width="145" />
+        <el-table-column label="客户端 IP" width="200">
+          <template #default="{row}">
+            <span>{{ row.ip }}</span>
+            <span v-if="row.location" style="color:#909399;font-size:11px;margin-left:3px">/{{ row.location }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="方法" prop="method" width="70">
           <template #default="{row}">
             <el-tag size="small" :type="methodType(row.method)" effect="plain">{{ row.method }}</el-tag>

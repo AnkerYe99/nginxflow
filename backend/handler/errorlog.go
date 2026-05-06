@@ -31,6 +31,7 @@ type errorLogEntry struct {
 	RuleID   int64  `json:"rule_id"`
 	RuleName string `json:"rule_name"`
 	IP       string `json:"ip"`
+	Location string `json:"location"`
 	Method   string `json:"method"`
 	Path     string `json:"path"`
 	Status   int    `json:"status"`
@@ -214,6 +215,7 @@ func ListErrorLogs(c *gin.Context) {
 				RuleID:   r.id,
 				RuleName: r.name,
 				IP:       m[1],
+				Location: util.LookupIP(m[1]),
 				Method:   method,
 				Path:     path,
 				Status:   status,
