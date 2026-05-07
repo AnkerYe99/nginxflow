@@ -73,6 +73,8 @@ info "系统: $(lsb_release -ds 2>/dev/null || uname -sr)"
 step "探测下载源"
 DL_TYPE=""
 DL_BASE=""
+# 默认内网 Gitea 地址，可通过环境变量覆盖
+GITEA_URL="${GITEA_URL:-http://10.14.6.51:3000}"
 
 _get_release_json() {
   if [[ "$DL_TYPE" == "gitea" ]]; then
@@ -95,16 +97,16 @@ print(url)
 " 2>/dev/null
 }
 
-if [[ -n "${GITEA_URL:-}" ]]; then
-  if curl -sf --connect-timeout 5 "$GITEA_URL/api/v1/repos/$GITEA_REPO" -o /dev/null 2>/dev/null; then
-    DL_TYPE="gitea"
-    DL_BASE="${GITEA_URL%/}"
-    info "内网 Gitea: $DL_BASE"
-  else
-    warn "GITEA_URL=$GITEA_URL 无法访问，尝试 GitHub..."
-  fi
+# 优先内网 Gitea
+if curl -sf --connect-timeout 5 "$GITEA_URL/api/v1/repos/$GITEA_REPO" -o /dev/null 2>/dev/null; then
+  DL_TYPE="gitea"
+  DL_BASE="${GITEA_URL%/}"
+  info "内网 Gitea: $DL_BASE"
+else
+  warn "Gitea ($GITEA_URL) 不可达，尝试公网 GitHub..."
 fi
 
+# 回退 GitHub
 if [[ -z "$DL_TYPE" ]]; then
   if curl -sf --connect-timeout 8 "https://api.github.com/repos/$GITHUB_REPO/releases/latest" -o /dev/null 2>/dev/null; then
     DL_TYPE="github"
@@ -112,7 +114,7 @@ if [[ -z "$DL_TYPE" ]]; then
   fi
 fi
 
-[[ -z "$DL_TYPE" ]] && error "无法连接任何下载源。内网用户请指定: GITEA_URL=http://IP:PORT bash install.sh"
+[[ -z "$DL_TYPE" ]] && error "无法连接任何下载源（Gitea: $GITEA_URL，GitHub 均不可达）"
 
 # ── 下载二进制 ─────────────────────────────────────────────
 step "下载最新版本"
