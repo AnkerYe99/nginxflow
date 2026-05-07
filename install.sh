@@ -157,32 +157,35 @@ info "二进制已安装到 $INSTALL_DIR/ankerye-flow-server"
 # ── 下载 IP 地理库 ────────────────────────────────────────────
 step "下载 IP 地理库"
 MMDB_PATH="$DATA_DIR/GeoLite2-City.mmdb"
+GITEA_MMDB="http://10.14.6.51:3000/anker/AnkerYe-BTM/raw/branch/main/data/GeoLite2-City.mmdb.gz"
 if [[ -f "$MMDB_PATH" ]]; then
   warn "IP 地理库已存在，跳过下载（如需更新请手动删除 $MMDB_PATH 后重装）"
 else
-  YYYYMM=$(date +%Y-%m)
-  MMDB_URL="https://download.db-ip.com/free/dbip-city-lite-${YYYYMM}.mmdb.gz"
   MMDB_TMP="$(mktemp /tmp/dbip-XXXXXX.mmdb.gz)"
-  info "下载 DB-IP City Lite: $MMDB_URL"
-  if curl -fL --connect-timeout 30 --max-time 120 --progress-bar "$MMDB_URL" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
+  # 优先从本地 Gitea 仓库下载（内网，秒级完成）
+  info "从本地 Gitea 下载 IP 地理库..."
+  if curl -fL --connect-timeout 10 --max-time 120 --progress-bar "$GITEA_MMDB" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
     rm -f "$MMDB_TMP"
-    info "IP 地理库已下载: $MMDB_PATH ($(du -sh "$MMDB_PATH" | cut -f1))"
+    info "IP 地理库已下载（本地 Gitea）: $MMDB_PATH ($(du -sh "$MMDB_PATH" | cut -f1))"
   else
-    # 尝试上个月版本（月初可能当月尚未发布）
-    PREV_MM=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m 2>/dev/null || date -v-1m +%Y-%m 2>/dev/null || echo "")
-    if [[ -n "$PREV_MM" ]]; then
+    # Gitea 不可达则回退公网
+    warn "本地 Gitea 不可达，回退公网下载..."
+    YYYYMM=$(date +%Y-%m)
+    MMDB_URL="https://download.db-ip.com/free/dbip-city-lite-${YYYYMM}.mmdb.gz"
+    if curl -fL --connect-timeout 30 --max-time 180 --progress-bar "$MMDB_URL" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
+      rm -f "$MMDB_TMP"
+      info "IP 地理库已下载（公网 $YYYYMM）: $MMDB_PATH ($(du -sh "$MMDB_PATH" | cut -f1))"
+    else
+      # 尝试上个月版本
+      PREV_MM=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m 2>/dev/null || date -v-1m +%Y-%m 2>/dev/null || echo "")
       MMDB_URL2="https://download.db-ip.com/free/dbip-city-lite-${PREV_MM}.mmdb.gz"
-      info "当月版本不可用，尝试上月版本: $MMDB_URL2"
-      if curl -fL --connect-timeout 30 --max-time 120 --progress-bar "$MMDB_URL2" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
+      if [[ -n "$PREV_MM" ]] && curl -fL --connect-timeout 30 --max-time 180 --progress-bar "$MMDB_URL2" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
         rm -f "$MMDB_TMP"
-        info "IP 地理库已下载（上月版本 $PREV_MM）: $MMDB_PATH"
+        info "IP 地理库已下载（公网上月 $PREV_MM）: $MMDB_PATH"
       else
         rm -f "$MMDB_TMP" "$MMDB_PATH"
-        warn "IP 地理库下载失败（网络不通？），GeoIP 功能暂不可用，后续可手动下载到 $MMDB_PATH"
+        warn "IP 地理库下载失败，GeoIP 功能暂不可用，后续可手动下载到 $MMDB_PATH"
       fi
-    else
-      rm -f "$MMDB_TMP" "$MMDB_PATH"
-      warn "IP 地理库下载失败，后续可手动下载到 $MMDB_PATH"
     fi
   fi
 fi
