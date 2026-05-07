@@ -61,6 +61,12 @@ for pkg in curl python3; do
     apt-get update -y && apt-get install -y $pkg
   fi
 done
+# 确保 cron 守护进程已安装并运行（日志轮转依赖）
+if ! dpkg -l cron 2>/dev/null | grep -q '^ii'; then
+  info "安装 cron..."
+  apt-get update -y && apt-get install -y --no-install-recommends cron
+fi
+systemctl enable cron 2>/dev/null && systemctl start cron 2>/dev/null || true
 info "系统: $(lsb_release -ds 2>/dev/null || uname -sr)"
 
 # ── 探测下载源 ────────────────────────────────────────────
@@ -148,6 +154,39 @@ rm -f "$DL_TMP"
 chmod +x "$INSTALL_DIR/ankerye-flow-server"
 info "二进制已安装到 $INSTALL_DIR/ankerye-flow-server"
 
+# ── 下载 IP 地理库 ────────────────────────────────────────────
+step "下载 IP 地理库"
+MMDB_PATH="$DATA_DIR/GeoLite2-City.mmdb"
+if [[ -f "$MMDB_PATH" ]]; then
+  warn "IP 地理库已存在，跳过下载（如需更新请手动删除 $MMDB_PATH 后重装）"
+else
+  YYYYMM=$(date +%Y-%m)
+  MMDB_URL="https://download.db-ip.com/free/dbip-city-lite-${YYYYMM}.mmdb.gz"
+  MMDB_TMP="$(mktemp /tmp/dbip-XXXXXX.mmdb.gz)"
+  info "下载 DB-IP City Lite: $MMDB_URL"
+  if curl -fL --connect-timeout 30 --max-time 120 --progress-bar "$MMDB_URL" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
+    rm -f "$MMDB_TMP"
+    info "IP 地理库已下载: $MMDB_PATH ($(du -sh "$MMDB_PATH" | cut -f1))"
+  else
+    # 尝试上个月版本（月初可能当月尚未发布）
+    PREV_MM=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m 2>/dev/null || date -v-1m +%Y-%m 2>/dev/null || echo "")
+    if [[ -n "$PREV_MM" ]]; then
+      MMDB_URL2="https://download.db-ip.com/free/dbip-city-lite-${PREV_MM}.mmdb.gz"
+      info "当月版本不可用，尝试上月版本: $MMDB_URL2"
+      if curl -fL --connect-timeout 30 --max-time 120 --progress-bar "$MMDB_URL2" -o "$MMDB_TMP" 2>/dev/null && gunzip -c "$MMDB_TMP" > "$MMDB_PATH"; then
+        rm -f "$MMDB_TMP"
+        info "IP 地理库已下载（上月版本 $PREV_MM）: $MMDB_PATH"
+      else
+        rm -f "$MMDB_TMP" "$MMDB_PATH"
+        warn "IP 地理库下载失败（网络不通？），GeoIP 功能暂不可用，后续可手动下载到 $MMDB_PATH"
+      fi
+    else
+      rm -f "$MMDB_TMP" "$MMDB_PATH"
+      warn "IP 地理库下载失败，后续可手动下载到 $MMDB_PATH"
+    fi
+  fi
+fi
+
 # ── 生成配置 ────────────────────────────────────────────────
 if [[ ! -f "$INSTALL_DIR/config.yaml" ]]; then
   step "生成配置文件"
@@ -176,6 +215,8 @@ health_check:
 cert:
   renew_before_days: 10
   check_hour: 2
+
+geoip_db: $DATA_DIR/GeoLite2-City.mmdb
 CFEOF
   info "配置文件已生成"
 else
@@ -210,7 +251,13 @@ http {
     keepalive_timeout 65;
     client_max_body_size 64m;
     log_format ankerye_flow '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                            '\$status \$body_bytes_sent "\$http_referer" "\$http_user_agent" \$upstream_addr';
+                            '\$status \$body_bytes_sent "\$http_referer" "\$http_user_agent" \$upstream_addr '
+                            '\$request_time \$upstream_response_time';
+    log_format ankerye_capture escape=json '{"time":"\$time_iso8601","ip":"\$remote_addr",'
+                            '"method":"\$request_method","uri":"\$request_uri","status":\$status,'
+                            '"req_time":\$request_time,"up_time":"\$upstream_response_time",'
+                            '"upstream":"\$upstream_addr","content_type":"\$content_type",'
+                            '"ua":"\$http_user_agent","body":"\$request_body"}';
     include /etc/nginx/conf.d/*-http.conf;
 }
 NGINXEOF
@@ -231,6 +278,37 @@ nginx -t 2>/dev/null && {
   if pgrep -x nginx &>/dev/null; then nginx -s reload; else nginx; fi
 }
 info "Nginx 配置完成"
+
+# ── 配置日志轮转 ─────────────────────────────────────────────
+step "配置日志轮转"
+
+# app.log 轮转（copytruncate，无需重启服务）
+cat > /etc/logrotate.d/ankerye-flow-applog << 'LREOF'
+/var/log/AnkerYe-BTM/app.log {
+    size 10M
+    rotate 3
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+LREOF
+info "app.log logrotate 配置完成"
+
+# 每 10 分钟运行 logrotate（确保单个大文件能及时处理）
+cat > /etc/cron.d/btm-logrotate << 'CREOF'
+*/10 * * * * root /usr/sbin/logrotate /etc/logrotate.d/ankerye-flow-* 2>/dev/null
+CREOF
+chmod 644 /etc/cron.d/btm-logrotate
+info "logrotate cron 已配置（每 10 分钟执行）"
+
+# 注册系统 logrotate 配置（cron.daily 补充）
+if [[ -f /etc/logrotate.d/nginx ]]; then
+  info "系统 nginx logrotate 已存在，跳过"
+fi
+systemctl is-active --quiet cron 2>/dev/null || { systemctl enable cron && systemctl start cron; }
+info "cron 服务已运行"
 
 # ── 注册 systemd 服务 ────────────────────────────────────────
 step "注册系统服务"
