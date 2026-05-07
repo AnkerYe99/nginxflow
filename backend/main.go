@@ -58,6 +58,7 @@ func main() {
 	go engine.StartSlaveRulesSyncAgent()
 	go engine.StartSlaveCertsSyncAgent()
 	go engine.StartSlaveFilterSyncAgent()
+	go engine.StartCaptureRotator()
 
 	r := gin.Default()
 	r.Use(corsMiddleware())
