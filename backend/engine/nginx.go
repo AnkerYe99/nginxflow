@@ -1,11 +1,17 @@
 package engine
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
@@ -14,11 +20,59 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"ankerye-flow/config"
 	"ankerye-flow/db"
 	"ankerye-flow/model"
 )
+
+// catchAllBody 是未匹配域名时返回的“网站不存在”页面（HTTP/HTTPS 共用）
+const catchAllBody = "<!DOCTYPE html><html><head><meta charset=\\\"UTF-8\\\"><meta name=\\\"viewport\\\" content=\\\"width=device-width,initial-scale=1\\\"><title>网站不存在</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}.card{background:#fff;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);width:100%;max-width:400px}.icon{font-size:72px;line-height:1;margin-bottom:24px}.title{font-size:clamp(18px,4vw,22px);font-weight:600;color:#1a1a1a;margin-bottom:12px}.desc{font-size:clamp(13px,3.5vw,15px);color:#888;line-height:1.8}</style></head><body><div class=\\\"card\\\"><div class=\\\"icon\\\">🌐</div><div class=\\\"title\\\">网站不存在</div><div class=\\\"desc\\\">您访问的网站不存在<br>请确认域名是否正确</div></div></body></html>"
+
+// ensureCatchAllCert 确保存在一个自签名证书供 HTTPS catch-all default_server 使用。
+// nginx 要求 ssl server 必须配置证书才能完成 TLS 握手；未匹配 SNI 的请求会落到此块返回“网站不存在”。
+// 返回证书目录（CertDir/_catchall），证书已存在则直接返回。
+func ensureCatchAllCert() (string, error) {
+	dir := filepath.Join(config.Global.Nginx.CertDir, "_catchall")
+	crtPath := filepath.Join(dir, "fullchain.pem")
+	keyPath := filepath.Join(dir, "privkey.pem")
+	if _, err := os.Stat(crtPath); err == nil {
+		if _, err := os.Stat(keyPath); err == nil {
+			return dir, nil
+		}
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	tmpl := x509.Certificate{
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               pkix.Name{CommonName: "default.invalid"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().AddDate(50, 0, 0),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"default.invalid"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		return "", err
+	}
+	crtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	if err := os.WriteFile(crtPath, crtPEM, 0644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
 
 // formatBackend 给 upstream server 拼地址：IPv6 需要用中括号
 func formatBackend(addr string, port int) string {
@@ -338,15 +392,44 @@ func SyncPortDefaults() {
 	}
 	rows.Close()
 
+	// catchCertDir 在存在 HTTPS 端口时按需生成自签证书
+	catchCertDir := ""
+	for _, ps := range ports {
+		if ps.isHTTPS {
+			if d, err := ensureCatchAllCert(); err == nil {
+				catchCertDir = d
+			}
+			break
+		}
+	}
+
+	// 注意：nginx.conf 只 include *-http.conf，因此 HTTPS 端口的 catch-all 也必须用 -http.conf 后缀才会被加载
 	for port, ps := range ports {
 		path := filepath.Join(config.Global.Nginx.ConfDir, fmt.Sprintf("default-%d-http.conf", port))
-		if !ps.isHTTPS && ps.hasNamed && !ps.hasWildcard {
-			// Use default_server so nginx routes unmatched requests here
+		if ps.isHTTPS {
+			// HTTPS 端口：生成 ssl catch-all default_server，未匹配 SNI 的请求统一返回“网站不存在”
+			if catchCertDir != "" {
+				content := fmt.Sprintf("# Auto catch-all: reject unmatched SNI on https port %d\nserver {\n", port)
+				content += renderListen(ps.stack, port, "ssl default_server")
+				content += "    server_name _;\n"
+				content += fmt.Sprintf("    ssl_certificate     %s/fullchain.pem;\n", catchCertDir)
+				content += fmt.Sprintf("    ssl_certificate_key %s/privkey.pem;\n", catchCertDir)
+				content += "    ssl_protocols TLSv1.2 TLSv1.3;\n"
+				content += "    ssl_ciphers HIGH:!aNULL:!MD5;\n"
+				content += "    default_type text/html;\n"
+				content += "    return 404 \"" + catchAllBody + "\";\n"
+				content += "}\n"
+				os.WriteFile(path, []byte(content), 0644)
+			} else {
+				os.Remove(path)
+			}
+		} else if ps.hasNamed && !ps.hasWildcard {
+			// HTTP 端口：仅有具名域名且无通配规则时，生成 catch-all default_server
 			content := fmt.Sprintf("# Auto catch-all: reject unmatched domains on port %d\nserver {\n", port)
 			content += renderListen(ps.stack, port, "default_server")
 			content += "    server_name _;\n"
 			content += "    default_type text/html;\n"
-			content += "    return 404 \"<!DOCTYPE html><html><head><meta charset=\\\"UTF-8\\\"><meta name=\\\"viewport\\\" content=\\\"width=device-width,initial-scale=1\\\"><title>网站不存在</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}.card{background:#fff;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);width:100%;max-width:400px}.icon{font-size:72px;line-height:1;margin-bottom:24px}.title{font-size:clamp(18px,4vw,22px);font-weight:600;color:#1a1a1a;margin-bottom:12px}.desc{font-size:clamp(13px,3.5vw,15px);color:#888;line-height:1.8}</style></head><body><div class=\\\"card\\\"><div class=\\\"icon\\\">🌐</div><div class=\\\"title\\\">网站不存在</div><div class=\\\"desc\\\">您访问的网站不存在<br>请确认域名是否正确</div></div></body></html>\";\n"
+			content += "    return 404 \"" + catchAllBody + "\";\n"
 			content += "}\n"
 			os.WriteFile(path, []byte(content), 0644)
 		} else {

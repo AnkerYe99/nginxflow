@@ -404,6 +404,9 @@ func applyRulesFull(result syncRulesResp) error {
 
 	applyFilterFromRulesResp(result)
 
+	// 同步后刷新 catch-all default_server（含 HTTPS 443），保证禁用/删除规则后未匹配域名统一返回“网站不存在”
+	SyncPortDefaults()
+
 	if err := Reload(); err != nil {
 		return fmt.Errorf("nginx 重载失败: %v", err)
 	}
