@@ -77,6 +77,7 @@ type ruleForExport struct {
 	ServerName     string
 	LbMethod       string
 	SslCertID      int64
+	SslCertDomain  string
 	SslRedirect    int64
 	HcEnabled      int64
 	HcInterval     int64
@@ -122,6 +123,9 @@ func queryRulesForExport() []ruleForExport {
 		rules = append(rules, r)
 	}
 	for i := range rules {
+		if rules[i].SslCertID > 0 {
+			db.DB.QueryRow(`SELECT domain FROM ssl_certs WHERE id=?`, rules[i].SslCertID).Scan(&rules[i].SslCertDomain)
+		}
 		srows, _ := db.DB.Query(`SELECT address,port,weight,state FROM upstream_servers
 			WHERE rule_id=? ORDER BY address ASC, port ASC`, rules[i].ID)
 		if srows != nil {
@@ -139,10 +143,10 @@ func queryRulesForExport() []ruleForExport {
 func hashRules(rules []ruleForExport) string {
 	h := md5.New()
 	for _, r := range rules {
-		fmt.Fprintf(h, "R:%d|%q|%q|%d|%q|%d|%d|%q|%q|%d|%d|%d|%d|%d|%q|%q|%d|%d|%q|%q|%q|%d|%d\n",
+		fmt.Fprintf(h, "R:%d|%q|%q|%d|%q|%d|%d|%q|%q|%q|%d|%d|%d|%d|%q|%q|%d|%d|%q|%q|%q|%d|%d\n",
 			r.ID, r.Name, r.Protocol, r.ListenPort, r.ListenStack,
 			r.HttpsEnabled, r.HttpsPort, r.ServerName, r.LbMethod,
-			r.SslCertID, r.SslRedirect, r.HcEnabled, r.HcInterval, r.HcTimeout,
+			r.SslCertDomain, r.SslRedirect, r.HcEnabled, r.HcInterval, r.HcTimeout,
 			r.HcPath, r.HcHost, r.HcFall, r.HcRise, r.LogMaxSize, r.CaptureMaxSize, r.CustomConfig, r.CaptureBody, r.Status)
 		for _, s := range r.Servers {
 			fmt.Fprintf(h, "S:%q|%d|%d|%q\n", s.Address, s.Port, s.Weight, s.State)
@@ -271,7 +275,7 @@ func SyncExport(c *gin.Context) {
 			"listen_port": r.ListenPort, "listen_stack": r.ListenStack,
 			"https_enabled": r.HttpsEnabled, "https_port": r.HttpsPort,
 			"server_name": r.ServerName, "lb_method": r.LbMethod,
-			"ssl_cert_id": r.SslCertID, "ssl_redirect": r.SslRedirect,
+			"ssl_cert_id": r.SslCertID, "ssl_cert_domain": r.SslCertDomain, "ssl_redirect": r.SslRedirect,
 			"hc_enabled": r.HcEnabled, "hc_interval": r.HcInterval, "hc_timeout": r.HcTimeout,
 			"hc_path": r.HcPath, "hc_host": r.HcHost, "hc_fall": r.HcFall, "hc_rise": r.HcRise,
 			"log_max_size": r.LogMaxSize, "capture_max_size": r.CaptureMaxSize,
@@ -341,7 +345,7 @@ func SyncRulesExport(c *gin.Context) {
 			"listen_port": r.ListenPort, "listen_stack": r.ListenStack,
 			"https_enabled": r.HttpsEnabled, "https_port": r.HttpsPort,
 			"server_name": r.ServerName, "lb_method": r.LbMethod,
-			"ssl_cert_id": r.SslCertID, "ssl_redirect": r.SslRedirect,
+			"ssl_cert_id": r.SslCertID, "ssl_cert_domain": r.SslCertDomain, "ssl_redirect": r.SslRedirect,
 			"hc_enabled": r.HcEnabled, "hc_interval": r.HcInterval, "hc_timeout": r.HcTimeout,
 			"hc_path": r.HcPath, "hc_host": r.HcHost, "hc_fall": r.HcFall, "hc_rise": r.HcRise,
 			"log_max_size": r.LogMaxSize, "capture_max_size": r.CaptureMaxSize,

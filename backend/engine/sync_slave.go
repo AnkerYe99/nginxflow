@@ -66,6 +66,7 @@ type syncRule struct {
 	ServerName     string       `json:"server_name"`
 	LbMethod       string       `json:"lb_method"`
 	SslCertID      int64        `json:"ssl_cert_id"`
+	SslCertDomain  string       `json:"ssl_cert_domain"`
 	SslRedirect    int64        `json:"ssl_redirect"`
 	HcEnabled      int64        `json:"hc_enabled"`
 	HcInterval     int64        `json:"hc_interval"`
@@ -207,6 +208,7 @@ func localRulesMD5() string {
 		captureBody                                                       int64
 		name, protocol, listenStack, serverName, lbMethod                string
 		hcPath, logMaxSize, captureMaxSize, customConfig                  string
+		sslCertDomain                                                     string
 	}
 
 	var rules []row
@@ -230,10 +232,13 @@ func localRulesMD5() string {
 
 	type srow struct{ address, state string; port, weight int64 }
 	for _, r := range rules {
-		fmt.Fprintf(h, "R:%d|%q|%q|%d|%q|%d|%d|%q|%q|%d|%d|%d|%d|%d|%q|%d|%d|%q|%q|%q|%d|%d\n",
+		if r.sslCertID > 0 {
+			db.DB.QueryRow(`SELECT domain FROM ssl_certs WHERE id=?`, r.sslCertID).Scan(&r.sslCertDomain)
+		}
+		fmt.Fprintf(h, "R:%d|%q|%q|%d|%q|%d|%d|%q|%q|%q|%d|%d|%d|%d|%q|%d|%d|%q|%q|%q|%d|%d\n",
 			r.id, r.name, r.protocol, r.listenPort, r.listenStack,
 			r.httpsEnabled, r.httpsPort, r.serverName, r.lbMethod,
-			r.sslCertID, r.sslRedirect, r.hcEnabled, r.hcInterval, r.hcTimeout,
+			r.sslCertDomain, r.sslRedirect, r.hcEnabled, r.hcInterval, r.hcTimeout,
 			r.hcPath, r.hcFall, r.hcRise, r.logMaxSize, r.captureMaxSize, r.customConfig, r.captureBody, r.status)
 
 		srows, _ := db.DB.Query(`SELECT address,port,weight,state FROM upstream_servers
@@ -419,8 +424,14 @@ func applyRulesFull(result syncRulesResp) error {
 
 func upsertRules(rules []syncRule) {
 	for _, r := range rules {
+		// 证书引用按域名重映射到本地 ssl_certs 的 id（主从证书 id 各自自增，不能直接套用主站 id）
 		var sslCertID interface{}
-		if r.SslCertID > 0 {
+		if r.SslCertDomain != "" {
+			var localID int64
+			if err := db.DB.QueryRow(`SELECT id FROM ssl_certs WHERE domain=?`, r.SslCertDomain).Scan(&localID); err == nil && localID > 0 {
+				sslCertID = localID
+			}
+		} else if r.SslCertID > 0 {
 			sslCertID = r.SslCertID
 		}
 		captureMaxSize := r.CaptureMaxSize
