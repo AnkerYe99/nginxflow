@@ -343,6 +343,36 @@ func pullAndApplyRules(masterURL, token string) error {
 	return applyRulesFull(result)
 }
 
+// pruneStaleRuleConfs 删除 master 未下发的规则 conf 文件，使从节点 conf 目录与主节点保持一致。
+// 仅清理规则 conf（文件名形如 <数字id>-http.conf / <数字id>-stream.conf），
+// 不触碰 00-filter-http.conf、default-*-http.conf 等非规则配置。
+func pruneStaleRuleConfs(confDir string, keep map[string]string) {
+	for _, suffix := range []string{"-http.conf", "-stream.conf"} {
+		matches, _ := filepath.Glob(filepath.Join(confDir, "*"+suffix))
+		for _, f := range matches {
+			base := filepath.Base(f)
+			idPart := strings.TrimSuffix(base, suffix)
+			if idPart == "" || !isAllDigits(idPart) {
+				continue // 非规则 conf（如 default-80、00-filter），跳过
+			}
+			if _, ok := keep[base]; ok {
+				continue // master 仍下发，保留
+			}
+			os.Remove(f)
+			log.Printf("[slave-sync] 清理失效规则 conf: %s", base)
+		}
+	}
+}
+
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func applyRulesFull(result syncRulesResp) error {
 	confDir := config.Global.Nginx.ConfDir
 	if err := os.MkdirAll(confDir, 0755); err != nil {
@@ -353,6 +383,8 @@ func applyRulesFull(result syncRulesResp) error {
 			return fmt.Errorf("写入 %s 失败: %v", filename, err)
 		}
 	}
+	// 清理 master 不再下发的规则 conf（禁用/删除的规则）
+	pruneStaleRuleConfs(confDir, result.Data.NginxConfigs)
 
 	masterCount := len(result.Data.Rules)
 	if masterCount > 0 {
@@ -592,6 +624,8 @@ func pullAndApply(masterURL, token string) error {
 			return fmt.Errorf("写入 %s 失败: %v", filename, err)
 		}
 	}
+	// 清理 master 不再下发的规则 conf（禁用/删除的规则）
+	pruneStaleRuleConfs(confDir, result.Data.NginxConfigs)
 
 	if len(result.Data.Rules) > 0 {
 		masterIDs := make([]interface{}, len(result.Data.Rules))

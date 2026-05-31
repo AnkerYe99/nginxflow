@@ -1,6 +1,8 @@
 <template>
   <div>
-    <h2>{{ isEdit ? '编辑规则' : '新建规则' }}</h2>
+    <h2>{{ isEdit ? '编辑规则' : (isCopy ? '复制规则（另存为新规则）' : '新建规则') }}</h2>
+    <el-alert v-if="isCopy" type="info" :closable="false" show-icon style="margin-bottom:12px"
+      title="已复制源规则的全部参数，请修改域名等必要参数后保存。域名/端口若与现有规则重复，保存时会有提示。" />
     <el-card>
       <el-form :model="form" label-width="130px" style="max-width:820px">
         <el-divider>基本信息</el-divider>
@@ -159,6 +161,7 @@ import api from '../api'
 const route = useRoute()
 const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
+const isCopy = computed(() => !route.params.id && !!route.query.copyFrom)
 const saving = ref(false)
 const certs = ref([])
 
@@ -251,6 +254,21 @@ onMounted(async () => {
   if (isEdit.value) {
     const data = (await api.get(`/rules/${route.params.id}`)).data
     Object.assign(form.value, data)
+    mode.value = formToMode(data.protocol, data.https_enabled, data.listen_port)
+  } else if (isCopy.value) {
+    const data = (await api.get(`/rules/${route.query.copyFrom}`)).data
+    // 复制源规则全部参数，但去掉身份/状态字段，作为新规则保存
+    delete data.id
+    delete data.status
+    delete data.created_at
+    delete data.updated_at
+    if (Array.isArray(data.servers)) {
+      data.servers = data.servers.map(s => ({
+        address: s.address, port: s.port, weight: s.weight || 1, state: s.state || 'up'
+      }))
+    }
+    Object.assign(form.value, data)
+    form.value.name = (data.name || '') + ' - 副本'
     mode.value = formToMode(data.protocol, data.https_enabled, data.listen_port)
   }
 })

@@ -64,6 +64,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                      <el-dropdown-item command="copy">复制</el-dropdown-item>
                       <el-dropdown-item :command="row.status===1 ? 'disable' : 'enable'">
                         {{ row.status===1 ? '禁用' : '启用' }}
                       </el-dropdown-item>
@@ -77,6 +78,7 @@
               <template v-else>
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap">
                   <el-button size="small" @click="router.push(`/rules/${row.id}/edit`)">编辑</el-button>
+                  <el-button size="small" type="primary" plain @click="handleCmd('copy', row)">复制</el-button>
                   <el-button v-if="row.status===1" size="small" @click="toggle(row,0)">禁用</el-button>
                   <el-button v-else size="small" type="success" @click="toggle(row,1)">启用</el-button>
                   <el-dropdown size="small" @command="handleCmd($event, row)">
@@ -167,6 +169,7 @@ const pagedList = computed(() => {
 
 function handleCmd(cmd, row) {
   if (cmd === 'edit') router.push(`/rules/${row.id}/edit`)
+  else if (cmd === 'copy') router.push(`/rules/new?copyFrom=${row.id}`)
   else if (cmd === 'enable') toggle(row, 1)
   else if (cmd === 'disable') toggle(row, 0)
   else if (cmd === 'preview') preview(row.id)
